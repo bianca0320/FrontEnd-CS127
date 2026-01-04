@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { groupMockService } from '../services/groupMockService';
-import { Entry, TransactionType, Person, Group } from '../types';
+import { Entry, TransactionType, Person, Group, PaymentFrequency } from '../types';
 import './CreateEntryModal.css';
 
 interface CreateEntryModalProps {
@@ -28,7 +28,7 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
   // const [imageFiles, setImageFiles] = useState<File[]>([]); // unused
   // Installment fields
   const [startDate, setStartDate] = useState('');
-  const [paymentFrequency, setPaymentFrequency] = useState('MONTHLY');
+  const [paymentFrequency, setPaymentFrequency] = useState<PaymentFrequency>(PaymentFrequency.MONTHLY);
   const [paymentTerms, setPaymentTerms] = useState('');
   const [paymentAmountPerTerm, setPaymentAmountPerTerm] = useState('');
   // Group allocation fields
@@ -73,7 +73,7 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
       setDateFullyPaid('');
       setNotes('');
       setStartDate('');
-      setPaymentFrequency('MONTHLY');
+      setPaymentFrequency(PaymentFrequency.MONTHLY);
       setPaymentTerms('');
       setPaymentAmountPerTerm('');
       setPaymentAllocations([]);
@@ -348,9 +348,9 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
               </div>
               <div className="form-group">
                 <label>Payment Frequency</label>
-                <select value={paymentFrequency} onChange={e => setPaymentFrequency(e.target.value)}>
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="WEEKLY">Weekly</option>
+                <select value={paymentFrequency} onChange={e => setPaymentFrequency(e.target.value as PaymentFrequency)}>
+                  <option value={PaymentFrequency.MONTHLY}>Monthly</option>
+                  <option value={PaymentFrequency.WEEKLY}>Weekly</option>
                 </select>
               </div>
               <div className="form-group">
@@ -416,12 +416,10 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
             </>
           )}
           <div className="modal-actions">
-            {!initialEntry && (
-              <>
-                <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary">Create</button>
-              </>
-            )}
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" className="btn-primary">
+              {initialEntry ? 'Confirm' : 'Create'}
+            </button>
           </div>
         </form>
       </div>

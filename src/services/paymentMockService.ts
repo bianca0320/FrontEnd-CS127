@@ -56,7 +56,27 @@ export const paymentMockService = {
   delete: async (id: string): Promise<boolean> => {
     const idx = payments.findIndex(p => p.id === id);
     if (idx === -1) return false;
+    
+    const paymentToDelete = payments[idx];
+    const entryId = paymentToDelete.entryId;
+    
     payments.splice(idx, 1);
+    
+    // Update the related entry's amountRemaining and status after deletion
+    if (entryId) {
+      const entry = await entryMockService.getById(entryId);
+      if (entry) {
+        // Get remaining payments for this entry
+        const allPayments = payments.filter(p => p.entryId === entryId);
+        const totalPaid = allPayments.reduce((sum, p) => sum + (p.paymentAmount || 0), 0);
+        const amountRemaining = Math.max(0, entry.amountBorrowed - totalPaid);
+        let status: PaymentStatus = PaymentStatus.UNPAID;
+        if (amountRemaining === 0) status = PaymentStatus.PAID;
+        else if (amountRemaining < entry.amountBorrowed) status = PaymentStatus.PARTIALLY_PAID;
+        await entryMockService.update(entry.id, { amountRemaining, status });
+      }
+    }
+    
     return true;
   },
 };

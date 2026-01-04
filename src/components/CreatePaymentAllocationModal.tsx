@@ -14,6 +14,7 @@ interface CreatePaymentAllocationModalProps {
 const CreatePaymentAllocationModal: React.FC<CreatePaymentAllocationModalProps> = ({ isOpen, onClose, onSave, initialAllocation, people, entryId }) => {
   const [personId, setPersonId] = useState('');
   const [amount, setAmount] = useState('');
+  const [amountPaid, setAmountPaid] = useState('');
   const [percent, setPercent] = useState('');
   const [description, setDescription] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
@@ -22,11 +23,13 @@ const CreatePaymentAllocationModal: React.FC<CreatePaymentAllocationModalProps> 
     if (initialAllocation) {
       setPersonId(initialAllocation.payee.personID.toString());
       setAmount(initialAllocation.amount.toString());
+      setAmountPaid((initialAllocation.amountPaid || 0).toString());
       setPercent(initialAllocation.percentageOfTotal.toString());
       setDescription(initialAllocation.description || '');
     } else {
       setPersonId('');
       setAmount('');
+      setAmountPaid('0');
       setPercent('');
       setDescription('');
     }
@@ -46,6 +49,14 @@ const CreatePaymentAllocationModal: React.FC<CreatePaymentAllocationModalProps> 
       setFormError('Amount must be a positive number.');
       return;
     }
+    if (amountPaid && (isNaN(Number(amountPaid)) || Number(amountPaid) < 0)) {
+      setFormError('Amount paid must be a non-negative number.');
+      return;
+    }
+    if (Number(amountPaid) > Number(amount)) {
+      setFormError('Amount paid cannot exceed amount due.');
+      return;
+    }
     if (!percent || isNaN(Number(percent)) || Number(percent) < 0 || Number(percent) > 100) {
       setFormError('Percent must be between 0 and 100.');
       return;
@@ -59,6 +70,7 @@ const CreatePaymentAllocationModal: React.FC<CreatePaymentAllocationModalProps> 
       entryId,
       payee,
       amount: parseFloat(amount),
+      amountPaid: parseFloat(amountPaid || '0'),
       percentageOfTotal: parseFloat(percent),
       description,
       status: 'UNPAID' as any,
@@ -84,8 +96,12 @@ const CreatePaymentAllocationModal: React.FC<CreatePaymentAllocationModalProps> 
             </select>
           </div>
           <div className="form-group">
-            <label>Amount *</label>
+            <label>Amount Due *</label>
             <input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required />
+          </div>
+          <div className="form-group">
+            <label>Amount Paid</label>
+            <input type="number" min="0" step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} />
           </div>
           <div className="form-group">
             <label>Percent *</label>

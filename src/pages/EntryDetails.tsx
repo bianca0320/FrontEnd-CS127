@@ -1,7 +1,7 @@
 
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
-import { Entry, Person, Group, Payment, PaymentAllocation } from '../types';
+import { useState, useEffect } from 'react';
+import { Entry, Person, Group, Payment, PaymentAllocation, InstallmentStatus } from '../types';
 import { personMockService } from '../services/personMockService';
 import { groupMockService } from '../services/groupMockService';
 import { entryMockService } from '../services/entryMockService';
@@ -11,11 +11,7 @@ import CreatePaymentModal from '../components/CreatePaymentModal';
 import CreatePaymentAllocationModal from '../components/CreatePaymentAllocationModal';
 import './EntryDetails.css';
 
-
-
 function EntryDetails() {
-  // Ref to the modal form for edit
-  const entryModalFormRef = useRef<HTMLFormElement | null>(null);
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [entry, setEntry] = useState<Entry | null>(null);
@@ -33,11 +29,45 @@ function EntryDetails() {
   const [showAllocModal, setShowAllocModal] = useState(false);
   const [editingAlloc, setEditingAlloc] = useState<PaymentAllocation | null>(null);
   const [allocLoading, setAllocLoading] = useState(false);
+  const [currentTermNumber, setCurrentTermNumber] = useState<number | undefined>(undefined);
+
+  // Installment term payment/skip handlers
+  const handleAddInstallmentPayment = async (termIdx: number) => {
+    if (!entry || !entry.installmentDetails) return;
+    // Open payment modal with term number and suggested amount
+    setCurrentTermNumber(termIdx + 1); // termNumber is 1-indexed
+    setEditingPayment(null);
+    setShowPaymentModal(true);
+  };
+
+  const handleSkipInstallmentTerm = async (termIdx: number) => {
+    if (!entry || !entry.installmentDetails) return;
+    const updatedTerms = entry.installmentDetails.terms.map((t: typeof entry.installmentDetails.terms[0], i: number) =>
+      i === termIdx
+        ? {
+            ...t,
+            skipped: true,
+            status: InstallmentStatus.SKIPPED,
+          }
+        : t
+    );
+    const updatedEntry = {
+      ...entry,
+      installmentDetails: {
+        ...entry.installmentDetails,
+        terms: updatedTerms,
+      },
+    };
+    await entryMockService.update(entry.id, updatedEntry);
+    setEntry(updatedEntry);
+    setModalSuccess('Term ' + (termIdx + 1) + ' skipped.');
+    setTimeout(() => setModalSuccess(null), 1500);
+  };
 
   useEffect(() => {
     if (id) {
-      entryMockService.getById(id).then(e => setEntry(e ?? null));
-      paymentMockService.getByEntryId(id).then(setPayments);
+      entryMockService.getById(id).then((e: Entry | undefined) => setEntry(e ?? null));
+      paymentMockService.getByEntryId(id).then((p: Payment[]) => setPayments(p));
     }
     personMockService.getAll().then(setPeople);
     groupMockService.getAll().then(setGroups);
@@ -46,11 +76,13 @@ function EntryDetails() {
   // Payment handlers
   const handleAddPayment = () => {
     setEditingPayment(null);
+    setCurrentTermNumber(undefined); // Clear term number for general payments
     setShowPaymentModal(true);
   };
 
   const handleEditPayment = (payment: Payment) => {
     setEditingPayment(payment);
+    setCurrentTermNumber(payment.termNumber); // Preserve term number if editing installment payment
     setShowPaymentModal(true);
   };
 
@@ -59,8 +91,64 @@ function EntryDetails() {
     setPaymentLoading(true);
     setModalError(null);
     try {
+      // Get the payment details before deleting to check if it's linked to a term
+      const payments = await paymentMockService.getByEntryId(id!);
+      const paymentToDelete = payments.find(p => p.id === paymentId);
+      
       await paymentMockService.delete(paymentId);
       if (id) setPayments(await paymentMockService.getByEntryId(id));
+      
+      // If payment was for a specific term, revert that term to unpaid
+      if (paymentToDelete?.termNumber && entry?.installmentDetails) {
+        const termIdx = paymentToDelete.termNumber - 1; // Convert to 0-indexed
+        
+        // Determine what the status should be after removing payment
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const termDueDate = new Date(entry.installmentDetails.terms[termIdx].dueDate);
+        termDueDate.setHours(0, 0, 0, 0);
+        
+        let newStatus = InstallmentStatus.UNPAID;
+        if (today.getTime() === termDueDate.getTime()) {
+          newStatus = InstallmentStatus.UNPAID;
+        } else if (today > termDueDate) {
+          newStatus = InstallmentStatus.DELINQUENT;
+        } else if (today < termDueDate) {
+          const installmentStartDate = new Date(entry.installmentDetails.startDate);
+          installmentStartDate.setHours(0, 0, 0, 0);
+          if (today < installmentStartDate) {
+            newStatus = InstallmentStatus.NOT_STARTED;
+          } else {
+            newStatus = InstallmentStatus.NOT_STARTED; // Before due date
+          }
+        }
+        
+        const updatedTerms = entry.installmentDetails.terms.map((t, i) =>
+          i === termIdx
+            ? {
+                ...t,
+                paymentDate: undefined,
+                status: newStatus,
+              }
+            : t
+        );
+        const entryWithRevertedTerm = {
+          ...entry,
+          installmentDetails: {
+            ...entry.installmentDetails,
+            terms: updatedTerms,
+          },
+        };
+        await entryMockService.update(id!, entryWithRevertedTerm);
+        setEntry(entryWithRevertedTerm);
+      } else {
+        // For non-installment payments, refresh entry to recalculate amountRemaining and status
+        if (id) {
+          const updatedEntry = await entryMockService.getById(id);
+          setEntry(updatedEntry ?? null);
+        }
+      }
+      
       setModalSuccess('Payment deleted successfully!');
       setTimeout(() => setModalSuccess(null), 1500);
     } catch (err) {
@@ -82,12 +170,38 @@ function EntryDetails() {
         setModalSuccess('Payment added successfully!');
       }
       if (id) {
+        // Refresh payments list
         setPayments(await paymentMockService.getByEntryId(id));
-        // Refresh entry to get updated amountRemaining and status
-        const updatedEntry = await entryMockService.getById(id);
-        setEntry(updatedEntry ?? null);
+        
+        // If payment is for a specific term, mark that term as paid
+        if (payment.termNumber && entry?.installmentDetails) {
+          const termIdx = payment.termNumber - 1; // Convert to 0-indexed
+          const updatedTerms = entry.installmentDetails.terms.map((t, i) =>
+            i === termIdx
+              ? {
+                  ...t,
+                  paymentDate: payment.paymentDate,
+                  status: InstallmentStatus.PAID,
+                }
+              : t
+          );
+          const entryWithPaidTerm = {
+            ...entry,
+            installmentDetails: {
+              ...entry.installmentDetails,
+              terms: updatedTerms,
+            },
+          };
+          await entryMockService.update(id, entryWithPaidTerm);
+          setEntry(entryWithPaidTerm);
+        } else {
+          // Refresh entry to get updated amountRemaining and status (for non-installment payments)
+          const updatedEntry = await entryMockService.getById(id);
+          setEntry(updatedEntry ?? null);
+        }
       }
       setShowPaymentModal(false);
+      setCurrentTermNumber(undefined); // Clear term number
       setTimeout(() => setModalSuccess(null), 1500);
     } catch (err) {
       setModalError('Failed to save payment');
@@ -113,7 +227,7 @@ function EntryDetails() {
       if (entry && entry.paymentAllocations) {
         const updatedEntry = {
           ...entry,
-          paymentAllocations: entry.paymentAllocations.filter(a => a.id !== allocId),
+          paymentAllocations: entry.paymentAllocations.filter((a: PaymentAllocation) => a.id !== allocId),
         };
         setEntry(updatedEntry ?? null);
         setModalSuccess('Allocation deleted successfully!');
@@ -136,7 +250,7 @@ function EntryDetails() {
         let updatedAllocations: PaymentAllocation[] = entry.paymentAllocations ? [...entry.paymentAllocations] : [];
         if (allocId) {
           // Edit
-          updatedAllocations = updatedAllocations.map(a => a.id === allocId ? { ...a, ...alloc, id: allocId } : a);
+          updatedAllocations = updatedAllocations.map((a: PaymentAllocation) => a.id === allocId ? { ...a, ...alloc, id: allocId } : a);
           setModalSuccess('Allocation updated successfully!');
         } else {
           // Add
@@ -202,27 +316,8 @@ function EntryDetails() {
       <div className="page-header">
         <h1>Entry Details</h1>
         <div className="header-actions">
-          {!showEditModal && (
-            <>
-              <button className="btn-secondary" onClick={handleEdit}>Edit</button>
-              <button className="btn-danger" onClick={handleDelete} disabled={deleteLoading}>Delete</button>
-            </>
-          )}
-          {showEditModal && (
-            <>
-              <button
-                className="btn-primary"
-                onClick={() => {
-                  if (entryModalFormRef.current) {
-                    entryModalFormRef.current.requestSubmit();
-                  }
-                }}
-              >
-                Confirm
-              </button>
-              <button className="btn-secondary" onClick={() => setShowEditModal(false)}>Cancel</button>
-            </>
-          )}
+          <button className="btn-secondary" onClick={handleEdit}>Edit</button>
+          <button className="btn-danger" onClick={handleDelete} disabled={deleteLoading}>Delete</button>
         </div>
       </div>
       {modalError && <div className="error-message">{modalError}</div>}
@@ -237,7 +332,6 @@ function EntryDetails() {
           groups={groups}
           onGroupsUpdated={async () => setGroups(await groupMockService.getAll())}
           key={entry?.id || 'edit-modal'}
-          formRef={entryModalFormRef}
         />
       )}
 
@@ -277,10 +371,16 @@ function EntryDetails() {
           </div>
           <div className="detail-item">
             <label>Status:</label>
-            <span className={`status-badge status-${entry.status.toLowerCase()}`}>
-              {entry.status}
+            <span className={`status-badge status-${typeof entry.status === 'string' ? entry.status.toLowerCase() : ''}`}>
+              {typeof entry.status === 'string' ? entry.status : ''}
             </span>
           </div>
+          {entry.notes && (
+            <div className="detail-item" style={{ gridColumn: '1 / -1' }}>
+              <label>Notes:</label>
+              <span>{entry.notes}</span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -288,7 +388,9 @@ function EntryDetails() {
       <section className="details-section">
         <div className="section-header">
           <h2>Payment Details</h2>
-          <button className="btn-primary" onClick={handleAddPayment}>+ Add Payment</button>
+          {entry.transactionType !== 'Installment Expense' && (
+            <button className="btn-primary" onClick={handleAddPayment}>+ Add Payment</button>
+          )}
         </div>
         {payments && payments.length > 0 ? (
           <table className="payments-table">
@@ -297,16 +399,20 @@ function EntryDetails() {
                 <th>Date</th>
                 <th>Payee</th>
                 <th>Amount</th>
+                {entry.transactionType === 'Installment Expense' && <th>Term</th>}
                 <th>Notes</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {payments.map(payment => (
+              {payments.map((payment: Payment) => (
                 <tr key={payment.id}>
                   <td>{new Date(payment.paymentDate).toLocaleDateString()}</td>
                   <td>{payment.payee.firstName} {payment.payee.lastName}</td>
                   <td>₱{payment.paymentAmount.toLocaleString()}</td>
+                  {entry.transactionType === 'Installment Expense' && (
+                    <td>{payment.termNumber ? `Term ${payment.termNumber}` : '-'}</td>
+                  )}
                   <td>{payment.notes}</td>
                   <td>
                     <button className="btn-secondary" onClick={() => handleEditPayment(payment)}>Edit</button>
@@ -333,7 +439,7 @@ function EntryDetails() {
                 typeof (entry.borrower as any).personID === 'number'
               ) {
                 // Single person borrower
-                return people.filter(p => p.personID === (entry.borrower as Person).personID);
+                return people.filter((p: Person) => p.personID === (entry.borrower as Person).personID);
               } else if (
                 typeof entry.borrower === 'object' &&
                 'groupID' in entry.borrower &&
@@ -345,6 +451,9 @@ function EntryDetails() {
               return people;
             })()}
             entryId={entry.id}
+            termNumber={currentTermNumber}
+            suggestedAmount={currentTermNumber && entry.installmentDetails ? entry.installmentDetails.paymentAmountPerTerm : undefined}
+            suggestedDate={currentTermNumber && entry.installmentDetails ? entry.installmentDetails.terms[currentTermNumber - 1]?.dueDate : undefined}
           />
         )}
       </section>
@@ -353,7 +462,142 @@ function EntryDetails() {
       {entry.transactionType === 'Installment Expense' && entry.installmentDetails && (
         <section className="details-section">
           <h2>Installment Details</h2>
-          {/* TODO: Display installment details */}
+          <div className="installment-summary">
+            <div className="detail-item">
+              <label>Start Date:</label>
+              <span>{new Date(entry.installmentDetails.startDate).toLocaleDateString()}</span>
+            </div>
+            <div className="detail-item">
+              <label>Payment Frequency:</label>
+              <span>{entry.installmentDetails.paymentFrequency}</span>
+            </div>
+            <div className="detail-item">
+              <label>Total Terms:</label>
+              <span>{entry.installmentDetails.paymentTerms}</span>
+            </div>
+            <div className="detail-item">
+              <label>Amount Per Term:</label>
+              <span>₱{entry.installmentDetails.paymentAmountPerTerm.toLocaleString()}</span>
+            </div>
+            <div className="detail-item">
+              <label>Progress:</label>
+              <div style={{ width: '100%' }}>
+                {(() => {
+                  const paidCount = entry.installmentDetails.terms.filter(t => t.status === InstallmentStatus.PAID).length;
+                  const totalTerms = entry.installmentDetails.paymentTerms;
+                  const percentage = totalTerms > 0 ? (paidCount / totalTerms) * 100 : 0;
+                  return (
+                    <>
+                      <div style={{ 
+                        width: '100%', 
+                        height: '24px', 
+                        backgroundColor: '#e0e0e0', 
+                        borderRadius: '12px',
+                        overflow: 'hidden',
+                        marginTop: '0.5em'
+                      }}>
+                        <div style={{ 
+                          width: `${percentage}%`, 
+                          height: '100%', 
+                          backgroundColor: percentage >= 100 ? '#4caf50' : '#2196f3',
+                          transition: 'width 0.3s ease'
+                        }}></div>
+                      </div>
+                      <div style={{ marginTop: '0.3em', fontSize: '0.9em', color: '#666' }}>
+                        {paidCount} / {totalTerms} terms paid ({percentage.toFixed(1)}%)
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+          <table className="installment-table">
+            <thead>
+              <tr>
+                <th>Term</th>
+                <th>Due Date</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entry.installmentDetails.terms.map((term: typeof entry.installmentDetails.terms[0], idx: number) => {
+                // Determine status using InstallmentStatus enum
+                const today = new Date();
+                today.setHours(0, 0, 0, 0); // Normalize to start of day
+                
+                const installmentStartDate = new Date(entry.installmentDetails!.startDate);
+                installmentStartDate.setHours(0, 0, 0, 0);
+                
+                const termDueDate = new Date(term.dueDate);
+                termDueDate.setHours(0, 0, 0, 0);
+                
+                let status = term.status;
+                
+                // Priority order for status calculation:
+                // 1. If installment hasn't started yet, all terms are NOT_STARTED
+                if (today < installmentStartDate) {
+                  status = InstallmentStatus.NOT_STARTED;
+                }
+                // 2. If term is already marked as paid or skipped, keep that status
+                else if (term.status === InstallmentStatus.PAID) {
+                  status = InstallmentStatus.PAID;
+                } else if (term.status === InstallmentStatus.SKIPPED || term.skipped) {
+                  status = InstallmentStatus.SKIPPED;
+                }
+                // 3. Check if payment was made (has paymentDate)
+                else if (term.paymentDate) {
+                  status = InstallmentStatus.PAID;
+                }
+                // 4. If today is before the due date, it's not started yet
+                else if (today < termDueDate) {
+                  status = InstallmentStatus.NOT_STARTED;
+                }
+                // 5. If today equals or is after the due date
+                else if (today >= termDueDate) {
+                  // If it's on the due date or within grace period (same day), it's UNPAID
+                  if (today.getTime() === termDueDate.getTime()) {
+                    status = InstallmentStatus.UNPAID;
+                  }
+                  // If past due date, it's DELINQUENT
+                  else {
+                    status = InstallmentStatus.DELINQUENT;
+                  }
+                }
+                // 6. Default to UNPAID as fallback
+                else {
+                  status = InstallmentStatus.UNPAID;
+                }
+                
+                return (
+                  <tr key={term.termNumber}>
+                    <td>{term.termNumber}</td>
+                    <td>{new Date(term.dueDate).toLocaleDateString()}</td>
+                    <td>
+                      <span className={`status-badge status-${status.toLowerCase()}`}>
+                        {status}
+                      </span>
+                    </td>
+
+                    <td>
+                      {status === InstallmentStatus.UNPAID && (
+                        <>
+                          <button className="btn-primary" onClick={() => handleAddInstallmentPayment(idx)}>Add Payment</button>
+                          <button className="btn-secondary" onClick={() => handleSkipInstallmentTerm(idx)}>Skip Term</button>
+                        </>
+                      )}
+                      {status === InstallmentStatus.DELINQUENT && (
+                        <button className="btn-primary" onClick={() => handleAddInstallmentPayment(idx)}>Pay Now</button>
+                      )}
+                      {status === InstallmentStatus.SKIPPED && <span>Skipped</span>}
+                      {status === InstallmentStatus.PAID && <span>Paid</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </section>
       )}
 
@@ -369,25 +613,36 @@ function EntryDetails() {
               <thead>
                 <tr>
                   <th>Person</th>
-                  <th>Amount</th>
+                  <th>Amount Due</th>
+                  <th>Amount Paid</th>
                   <th>Percent</th>
                   <th>Description</th>
+                  <th>Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {entry.paymentAllocations.map(alloc => (
-                  <tr key={alloc.id}>
-                    <td>{alloc.payee.firstName} {alloc.payee.lastName}</td>
-                    <td>₱{alloc.amount.toLocaleString()}</td>
-                    <td>{alloc.percentageOfTotal}%</td>
-                    <td>{alloc.description}</td>
-                    <td>
-                      <button className="btn-secondary" onClick={() => handleEditAlloc(alloc)}>Edit</button>
-                      <button className="btn-danger" onClick={() => handleDeleteAlloc(alloc.id)} disabled={allocLoading}>Delete</button>
-                    </td>
-                  </tr>
-                ))}
+                {entry.paymentAllocations.map((alloc: PaymentAllocation) => {
+                  // Compute allocation status: UNPAID, PARTIALLY_PAID, PAID
+                  const paid = alloc.amountPaid || 0;
+                  let status = 'UNPAID';
+                  if (paid >= alloc.amount) status = 'PAID';
+                  else if (paid > 0) status = 'PARTIALLY_PAID';
+                  return (
+                    <tr key={alloc.id}>
+                      <td>{alloc.payee.firstName} {alloc.payee.lastName}</td>
+                      <td>₱{alloc.amount.toLocaleString()}</td>
+                      <td>₱{paid.toLocaleString()}</td>
+                      <td>{alloc.percentageOfTotal}%</td>
+                      <td>{alloc.description}</td>
+                      <td><span className={`status-badge status-${status.toLowerCase()}`}>{status}</span></td>
+                      <td>
+                        <button className="btn-secondary" onClick={() => handleEditAlloc(alloc)}>Edit</button>
+                        <button className="btn-danger" onClick={() => handleDeleteAlloc(alloc.id)} disabled={allocLoading}>Delete</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           ) : (

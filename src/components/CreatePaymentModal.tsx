@@ -9,28 +9,69 @@ interface CreatePaymentModalProps {
   initialPayment?: Payment | null;
   people: Person[];
   entryId: string;
+  termNumber?: number; // For installment entries - which term this payment is for
+  suggestedAmount?: number; // For installment entries - amount per term
+  suggestedDate?: Date; // For installment entries - due date of the term
 }
 
-const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose, onSave, initialPayment, people, entryId }) => {
+const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose, onSave, initialPayment, people, entryId, termNumber, suggestedAmount, suggestedDate }) => {
   const [personId, setPersonId] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [proof, setProof] = useState<File | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (initialPayment) {
       setPersonId(initialPayment.payee.personID.toString());
       setPaymentAmount(initialPayment.paymentAmount.toString());
+      // Handle date properly to avoid timezone offset
+      if (initialPayment.paymentDate) {
+        const d = new Date(initialPayment.paymentDate);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        setPaymentDate(`${year}-${month}-${day}`);
+      } else {
+        setPaymentDate(new Date().toISOString().slice(0, 10));
+      }
       setNotes(initialPayment.notes || '');
+      setProof(null);
     } else {
       setPersonId('');
-      setPaymentAmount('');
+      setPaymentAmount(suggestedAmount ? suggestedAmount.toString() : '');
+      // Handle suggested date properly to avoid timezone offset
+      if (suggestedDate) {
+        const d = new Date(suggestedDate);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        setPaymentDate(`${year}-${month}-${day}`);
+      } else {
+        setPaymentDate(new Date().toISOString().slice(0, 10));
+      }
       setNotes('');
+      setProof(null);
     }
     setFormError(null);
-  }, [initialPayment, isOpen]);
+  }, [initialPayment, isOpen, suggestedAmount, suggestedDate]);
 
   if (!isOpen) return null;
+
+  // Get max allowed payment (from parent EntryDetails via prop or context)
+  // For now, assume parent passes correct people (single borrower or group member)
+  // We'll fetch the entry from the mock service to get amountRemaining
+  const [maxAmount, setMaxAmount] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    (async () => {
+      // Try to get entry details for max amount
+      if (entryId) {
+        const entry = await import('../services/entryMockService').then(m => m.entryMockService.getById(entryId));
+        if (entry) setMaxAmount(entry.amountRemaining);
+      }
+    })();
+  }, [entryId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +84,10 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose
       setFormError('Amount must be a positive number.');
       return;
     }
+    if (maxAmount !== null && Number(paymentAmount) > maxAmount) {
+      setFormError('Amount cannot exceed remaining balance (₱' + maxAmount.toLocaleString() + ")");
+      return;
+    }
     const payee = people.find(p => p.personID.toString() === personId);
     if (!payee) {
       setFormError('Payee not found.');
@@ -50,9 +95,11 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose
     }
     onSave({
       entryId,
-      paymentDate: new Date(),
+      paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
       paymentAmount: parseFloat(paymentAmount),
       payee,
+      termNumber,
+      proof: proof ? proof as Blob : undefined,
       notes,
     }, initialPayment?.id);
   };
@@ -94,8 +141,45 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose
             </select>
           </div>
           <div className="form-group">
+            <label>Payment Date *</label>
+            <input
+              type="date"
+              value={paymentDate}
+              onChange={e => setPaymentDate(e.target.value)}
+              readOnly={!!termNumber && !!suggestedDate}
+              required
+            />
+            {termNumber && suggestedDate && <small>Fixed date for Term {termNumber}</small>}
+          </div>
+          <div className="form-group">
             <label>Amount *</label>
-            <input type="number" min="0" step="0.01" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} required />
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={paymentAmount}
+              max={maxAmount !== null ? maxAmount : undefined}
+              readOnly={!!termNumber && !!suggestedAmount}
+              onChange={e => {
+                if (maxAmount !== null && Number(e.target.value) > maxAmount) {
+                  setPaymentAmount(maxAmount.toString());
+                } else {
+                  setPaymentAmount(e.target.value);
+                }
+              }}
+              required
+            />
+            {maxAmount !== null && !termNumber && <small>Max: ₱{maxAmount.toLocaleString()}</small>}
+            {termNumber && suggestedAmount && <small>Fixed amount for Term {termNumber}</small>}
+          </div>
+          <div className="form-group">
+            <label>Proof (Optional)</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={e => setProof(e.target.files?.[0] || null)}
+            />
+            <small>Photo/s showing the payment (e.g. EWallet screenshot)</small>
           </div>
           <div className="form-group">
             <label>Notes</label>

@@ -1,3 +1,12 @@
+// For Installment entries, track each term's status
+export interface InstallmentTerm {
+  termNumber: number;
+  dueDate: Date;
+  status: InstallmentStatus;
+  paymentDate?: Date;
+  skipped?: boolean;
+  delinquent?: boolean;
+}
 // Enumerations
 export enum TransactionType {
   STRAIGHT_EXPENSE = 'Straight Expense',
@@ -49,6 +58,7 @@ export interface Payment {
   paymentDate: Date; // YYMMDD format
   paymentAmount: number; // Decimal
   payee: Person;
+  termNumber?: number; // For installment entries - which term this payment is for
   proof?: Blob; // BLOB - photo/s showing the payment
   notes?: string;
   createdAt: Date;
@@ -58,11 +68,11 @@ export interface Payment {
 export interface InstallmentDetails {
   id: string; // UUID
   entryId: string;
-  status: InstallmentStatus; // Not stored in DB
   startDate: Date; // YYMMDD format
   paymentFrequency: PaymentFrequency;
   paymentTerms: number; // Numeric
   paymentAmountPerTerm: number; // Decimal - auto computed
+  terms: InstallmentTerm[]; // Per-term status
   notes?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -74,6 +84,7 @@ export interface PaymentAllocation {
   description: string; // Item name or share by person
   payee: Person;
   amount: number; // Numeric
+  amountPaid: number; // Amount paid towards this allocation
   percentageOfTotal: number; // Not stored in DB
   status: PaymentAllocationStatus; // Not stored in DB
   notes?: string;
