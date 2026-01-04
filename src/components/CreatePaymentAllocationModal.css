@@ -1,0 +1,118 @@
+/* --- Modern Modal Redesign for Payment Allocation Modal --- */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(30, 41, 59, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-content {
+  background: #f9fafb;
+  color: #232946;
+  border-radius: 18px;
+  padding: 2.5rem 2.5rem 2rem 2.5rem;
+  min-width: 340px;
+  max-width: 95vw;
+  box-shadow: 0 8px 32px rgba(30,41,59,0.13);
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+.modal-header h2 {
+  font-size: 1.45rem;
+  font-weight: 700;
+  margin: 0;
+  color: #2563eb;
+  letter-spacing: 0.01em;
+}
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.7rem;
+  cursor: pointer;
+  color: #64748b;
+  transition: color 0.2s;
+}
+.modal-close:hover {
+  color: #ef4444;
+}
+.form-group {
+  margin-bottom: 1.25rem;
+}
+.form-group label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  color: #232946;
+  letter-spacing: 0.01em;
+}
+input[type="text"], input[type="number"], textarea, select {
+  width: 100%;
+  padding: 0.7rem 1rem;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 1rem;
+  background: #f3f4f6;
+  color: #232946;
+  transition: border 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+  resize: vertical;
+}
+input[type="text"]:focus, input[type="number"]:focus, textarea:focus, select:focus {
+  border: 1.5px solid #4f8cff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(79,140,255,0.12);
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e5e7eb;
+}
+.btn-primary {
+  background: #4f8cff;
+  color: #fff;
+  border: none;
+  padding: 0.65rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: background 0.2s;
+  box-shadow: 0 2px 8px rgba(79,140,255,0.08);
+}
+.btn-primary:hover {
+  background: #2563eb;
+}
+.btn-secondary {
+  background: #e0e7ef;
+  color: #232946;
+  border: none;
+  padding: 0.65rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+.btn-secondary:hover {
+  background: #cbd5e1;
+}
+.error-message {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1.5rem;
+  font-size: 0.98rem;
+}
+.required {
+  color: #ef4444;
+}

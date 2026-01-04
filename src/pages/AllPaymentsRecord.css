@@ -1,0 +1,213 @@
+
+/* --- Professional, Modern Payments Record Page --- */
+.payments-record.pro-ui {
+  animation: fadeIn 0.3s ease-in;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 3rem 1.5rem;
+  background: #f5f7fa;
+  border-radius: 18px;
+  box-shadow: 0 4px 32px rgba(30,41,59,0.07);
+  min-height: 80vh;
+}
+
+.pro-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 2.5rem;
+}
+.pro-header h1 {
+  margin: 0;
+  font-size: 2.1rem;
+  font-weight: 800;
+  color: #232946;
+  letter-spacing: 0.01em;
+}
+.pro-header .subtitle {
+  color: #64748b;
+  font-size: 1.08rem;
+  margin-top: 0.3rem;
+}
+.pro-create-btn {
+  background: linear-gradient(90deg, #6366f1 0%, #2563eb 100%);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  padding: 0.8rem 2.1rem;
+  font-size: 1.1rem;
+  box-shadow: 0 2px 8px rgba(99,102,241,0.08);
+  cursor: pointer;
+  transition: background 0.18s, box-shadow 0.18s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.pro-create-btn .plus-icon {
+  font-size: 1.3em;
+  font-weight: 700;
+}
+.pro-create-btn:hover {
+  background: linear-gradient(90deg, #4f46e5 0%, #1d4ed8 100%);
+  box-shadow: 0 4px 16px rgba(99,102,241,0.13);
+}
+
+.pro-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.1rem;
+  margin-bottom: 2.2rem;
+  align-items: center;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(30,41,59,0.04);
+  padding: 1.1rem 1.5rem;
+}
+.pro-filters input[type="text"],
+.pro-filters select {
+  flex: 1 1 180px;
+  padding: 0.6rem 1rem;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 7px;
+  font-size: 1rem;
+  background: #f9fafb;
+  color: #232946;
+  transition: border 0.18s;
+}
+.pro-filters input[type="text"]:focus,
+.pro-filters select:focus {
+  border: 1.5px solid #6366f1;
+  outline: none;
+}
+
+.pro-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  padding: 2.5rem 0;
+}
+.pro-empty .empty-illustration {
+  width: 120px;
+  margin-bottom: 1.2rem;
+  opacity: 0.7;
+}
+.pro-empty p {
+  color: #64748b;
+  font-size: 1.15rem;
+  text-align: center;
+}
+
+.pro-table-wrapper {
+  margin-top: 2rem;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(30,41,59,0.07);
+  overflow-x: auto;
+}
+.pro-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 1.04rem;
+  min-width: 900px;
+}
+.pro-table thead tr {
+  background: #f3f4f6;
+}
+.pro-table th, .pro-table td {
+  padding: 1.1rem 1.2rem;
+  text-align: left;
+}
+.pro-table th {
+  font-weight: 700;
+  color: #232946;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 2px solid #e5e7eb;
+  transition: color 0.18s;
+}
+.pro-table th.sortable:hover {
+  color: #6366f1;
+}
+.pro-row {
+  transition: background 0.13s;
+}
+.pro-row:hover {
+  background: #f1f5f9;
+}
+.entry-name {
+  font-weight: 600;
+  color: #2563eb;
+}
+.type-badge {
+  display: inline-block;
+  padding: 0.25em 0.7em;
+  border-radius: 6px;
+  font-size: 0.98em;
+  font-weight: 500;
+  background: #e0e7ff;
+  color: #3730a3;
+  letter-spacing: 0.01em;
+}
+.type-straightexpense { background: #e0e7ff; color: #3730a3; }
+.type-installmentexpense { background: #fef9c3; color: #b45309; }
+.type-groupexpense { background: #d1fae5; color: #047857; }
+.borrower-group {
+  color: #0e7490;
+  font-weight: 600;
+}
+.borrower-person {
+  color: #334155;
+}
+.amount {
+  color: #232946;
+  font-weight: 600;
+}
+.amount-remaining {
+  color: #ef4444;
+  font-weight: 600;
+}
+.status-badge {
+  display: inline-block;
+  padding: 0.22em 0.8em;
+  border-radius: 6px;
+  font-size: 0.97em;
+  font-weight: 600;
+  background: #e5e7eb;
+  color: #232946;
+  letter-spacing: 0.01em;
+}
+.status-unpaid { background: #fee2e2; color: #b91c1c; }
+.status-partially_paid { background: #fef9c3; color: #b45309; }
+.status-paid { background: #d1fae5; color: #047857; }
+.btn-link.pro-view-btn {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.2em 0.7em;
+  border-radius: 5px;
+  transition: background 0.13s;
+}
+.btn-link.pro-view-btn:hover {
+  background: #e0e7ff;
+}
+
+@media (max-width: 900px) {
+  .payments-record.pro-ui {
+    padding: 1.2rem 0.2rem 2rem 0.2rem;
+  }
+  .pro-table {
+    min-width: 600px;
+    font-size: 0.98rem;
+  }
+  .pro-header h1 {
+    font-size: 1.3rem;
+  }
+}
+

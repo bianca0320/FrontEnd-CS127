@@ -1,0 +1,183 @@
+/* --- Modern Modal Redesign for Entry Modal --- */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(30, 41, 59, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-content {
+  scrollbar-width: thin;
+  scrollbar-color: #a5b4fc #f1f5ff;
+  background: linear-gradient(135deg, #f8fafc 0%, #e0e7ff 100%);
+  color: #232946;
+  border-radius: 22px;
+  padding: 3.5rem 2.7rem 3.2rem 2.7rem;
+  min-width: 480px;
+  max-width: 700px;
+  max-height: 80vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-shadow: 0 12px 40px rgba(99,102,241,0.13);
+  font-family: 'Segoe UI', Arial, sans-serif;
+  border: 2.5px solid #a5b4fc;
+  position: relative;
+  animation: fadeIn 0.25s;
+  margin-top: 2.5rem;
+  margin-bottom: 2.5rem;
+}
+
+/* Custom scrollbar for Webkit browsers */
+.modal-content::-webkit-scrollbar {
+  width: 10px;
+  background: #f1f5ff;
+  border-radius: 8px;
+}
+.modal-content::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #a5b4fc 0%, #6366f1 100%);
+  border-radius: 8px;
+  min-height: 40px;
+  box-shadow: 0 2px 8px #a5b4fc44;
+}
+.modal-content::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.7rem;
+  border-bottom: 1.5px solid #e5e7eb;
+  padding-bottom: 0.7rem;
+}
+ .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.7rem;
+  border-bottom: 1.5px solid #e5e7eb;
+  padding-bottom: 0.7rem;
+}
+.modal-header h2 {
+  font-size: 1.7rem;
+  font-weight: 900;
+  margin: 0;
+  color: #4f46e5;
+  letter-spacing: 0.01em;
+  text-shadow: 0 2px 8px #e0e7ff;
+}
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.7rem;
+  cursor: pointer;
+  color: #64748b;
+  transition: color 0.2s;
+}
+.modal-close:hover {
+  color: #ef4444;
+}
+.form-group {
+  margin-bottom: 1.35rem;
+}
+.form-group label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 0.45rem;
+  color: #3730a3;
+  letter-spacing: 0.01em;
+}
+input[type="text"], input[type="number"], textarea, select {
+  width: 100%;
+  padding: 0.85rem 1.2rem;
+  border: 1.5px solid #a5b4fc;
+  border-radius: 10px;
+  font-size: 1.08rem;
+  background: #f1f5ff;
+  color: #232946;
+  transition: border 0.18s, box-shadow 0.18s;
+  box-sizing: border-box;
+  resize: vertical;
+  box-shadow: 0 1px 4px #e0e7ff;
+}
+input[type="text"]:focus, input[type="number"]:focus, textarea:focus, select:focus {
+  border: 1.5px solid #6366f1;
+  outline: none;
+  box-shadow: 0 0 0 2px #a5b4fc;
+}
+input[type="text"]:focus, input[type="number"]:focus, textarea:focus, select:focus {
+  border: 1.5px solid #4f8cff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(79,140,255,0.12);
+  margin-left: 1.2rem;
+}
+/* Section Divider */
+.form-group + .form-group {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 1.1rem;
+  margin-top: 0.7rem;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1.1rem;
+  margin-top: 2.2rem;
+  border-top: 1.5px solid #e5e7eb;
+  padding-top: 1.1rem;
+}
+.btn-primary {
+  background: linear-gradient(90deg, #6366f1 0%, #818cf8 100%);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.8rem 2.3rem;
+  font-size: 1.13rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.18s, box-shadow 0.18s;
+  box-shadow: 0 2px 12px #a5b4fc44;
+}
+.btn-primary:hover {
+  background: linear-gradient(90deg, #6366f1 0%, #4f46e5 100%);
+  box-shadow: 0 6px 24px #6366f144;
+}
+.btn-secondary {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: none;
+  border-radius: 10px;
+  padding: 0.7rem 2.1rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.18s;
+  box-shadow: 0 1px 4px #a5b4fc44;
+}
+.btn-secondary:hover {
+  background: #c7d2fe;
+}
+.error-message {
+  color: #ef4444;
+  background: #fee2e2;
+  border-radius: 7px;
+  padding: 0.7rem 1.1rem;
+  margin-bottom: 1.1rem;
+  font-weight: 700;
+  font-size: 1.04rem;
+  border: 1.2px solid #ef4444;
+}
+.warning-message {
+  color: #b45309;
+  background: #fef9c3;
+  border-radius: 7px;
+  padding: 0.7rem 1.1rem;
+  margin-bottom: 1.1rem;
+  font-weight: 700;
+  font-size: 1.04rem;
+  border: 1.2px solid #facc15;
+}
+.required {
+  color: #ef4444;
+}
