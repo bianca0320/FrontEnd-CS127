@@ -114,7 +114,7 @@ function EntryDetails() {
           newStatus = InstallmentStatus.DELINQUENT;
         } else if (today < termDueDate) {
           const installmentStartDate = new Date(entry.installmentDetails.startDate);
-          installmentStartDate.setHours(0, 0, 0, 0);
+          installmentStartDate.setHours(0, 0, 0);
           if (today < installmentStartDate) {
             newStatus = InstallmentStatus.NOT_STARTED;
           } else {
@@ -606,7 +606,7 @@ function EntryDetails() {
         <section className="details-section">
           <div className="section-header">
             <h2>Payment Allocation</h2>
-            <button className="btn-primary" onClick={handleAddAlloc}>+ Add Allocation</button>
+            <button className="btn-primary" onClick={handleAddAlloc} disabled={payments.length > 0}>+ Add Allocation</button>
           </div>
           {entry.paymentAllocations && entry.paymentAllocations.length > 0 ? (
             <table className="alloc-table">
@@ -637,8 +637,8 @@ function EntryDetails() {
                       <td>{alloc.description}</td>
                       <td><span className={`status-badge status-${status.toLowerCase()}`}>{status}</span></td>
                       <td>
-                        <button className="btn-secondary" onClick={() => handleEditAlloc(alloc)}>Edit</button>
-                        <button className="btn-danger" onClick={() => handleDeleteAlloc(alloc.id)} disabled={allocLoading}>Delete</button>
+                        <button className="btn-secondary" onClick={() => handleEditAlloc(alloc)} disabled={payments.length > 0}>Edit</button>
+                        <button className="btn-danger" onClick={() => handleDeleteAlloc(alloc.id)} disabled={allocLoading || payments.length > 0}>Delete</button>
                       </td>
                     </tr>
                   );
