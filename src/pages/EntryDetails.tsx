@@ -27,8 +27,10 @@ function EntryDetails() {
   // Payment Allocation (for group entries)
   const [showAllocModal, setShowAllocModal] = useState(false);
   const [editingAlloc, setEditingAlloc] = useState<PaymentAllocation | null>(null);
-  const [allocLoading, setAllocLoading] = useState(false);
   const [currentTermNumber, setCurrentTermNumber] = useState<number | undefined>(undefined);
+  const [editingTermNotes, setEditingTermNotes] = useState<{ [key: number]: boolean }>({});
+  const [termNotesValues, setTermNotesValues] = useState<{ [key: number]: string }>({});
+  const [paymentFromAllocation, setPaymentFromAllocation] = useState<PaymentAllocation | null>(null);
 
   // Installment term payment/skip handlers
   const handleAddInstallmentPayment = async (termIdx: number) => {
@@ -41,6 +43,8 @@ function EntryDetails() {
 
   const handleSkipInstallmentTerm = async (termIdx: number) => {
     if (!entry || !entry.installmentDetails) return;
+    
+    // Mark current term as skipped
     const updatedTerms = entry.installmentDetails.terms.map((t: typeof entry.installmentDetails.terms[0], i: number) =>
       i === termIdx
         ? {
@@ -50,6 +54,53 @@ function EntryDetails() {
           }
         : t
     );
+    
+    // Add a new term at the end
+    const lastTerm = updatedTerms[updatedTerms.length - 1];
+    const newDueDate = new Date(lastTerm.dueDate);
+    
+    // Calculate next due date based on payment frequency
+    if (entry.installmentDetails.paymentFrequency === 'Monthly') {
+      newDueDate.setMonth(newDueDate.getMonth() + 1);
+    } else if (entry.installmentDetails.paymentFrequency === 'Weekly') {
+      newDueDate.setDate(newDueDate.getDate() + 7);
+    }
+    newDueDate.setHours(0, 0, 0, 0);
+    
+    const newTerm = {
+      termNumber: updatedTerms.length + 1,
+      dueDate: newDueDate,
+      status: InstallmentStatus.NOT_STARTED,
+      skipped: false,
+      delinquent: false,
+      notes: '',
+    };
+    
+    updatedTerms.push(newTerm);
+    
+    const updatedEntry = {
+      ...entry,
+      installmentDetails: {
+        ...entry.installmentDetails,
+        terms: updatedTerms,
+        paymentTerms: updatedTerms.length, // Update total terms count
+      },
+    };
+    await entryMockService.update(entry.id, updatedEntry);
+    setEntry(updatedEntry);
+    setModalSuccess('Term ' + (termIdx + 1) + ' skipped. A new term has been added.');
+    setTimeout(() => setModalSuccess(null), 2000);
+  };
+
+  const handleSaveTermNotes = async (termIdx: number) => {
+    if (!entry || !entry.installmentDetails) return;
+    
+    const updatedTerms = entry.installmentDetails.terms.map((t, i) =>
+      i === termIdx
+        ? { ...t, notes: termNotesValues[termIdx] || '' }
+        : t
+    );
+    
     const updatedEntry = {
       ...entry,
       installmentDetails: {
@@ -57,9 +108,11 @@ function EntryDetails() {
         terms: updatedTerms,
       },
     };
+    
     await entryMockService.update(entry.id, updatedEntry);
     setEntry(updatedEntry);
-    setModalSuccess('Term ' + (termIdx + 1) + ' skipped.');
+    setEditingTermNotes({ ...editingTermNotes, [termIdx]: false });
+    setModalSuccess('Term notes saved successfully.');
     setTimeout(() => setModalSuccess(null), 1500);
   };
 
@@ -101,50 +154,78 @@ function EntryDetails() {
       if (paymentToDelete?.termNumber && entry?.installmentDetails) {
         const termIdx = paymentToDelete.termNumber - 1; // Convert to 0-indexed
         
-        // Determine what the status should be after removing payment
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const termDueDate = new Date(entry.installmentDetails.terms[termIdx].dueDate);
-        termDueDate.setHours(0, 0, 0, 0);
-        
-        let newStatus = InstallmentStatus.UNPAID;
-        if (today.getTime() === termDueDate.getTime()) {
-          newStatus = InstallmentStatus.UNPAID;
-        } else if (today > termDueDate) {
-          newStatus = InstallmentStatus.DELINQUENT;
-        } else if (today < termDueDate) {
-          const installmentStartDate = new Date(entry.installmentDetails.startDate);
-          installmentStartDate.setHours(0, 0, 0);
-          if (today < installmentStartDate) {
-            newStatus = InstallmentStatus.NOT_STARTED;
-          } else {
-            newStatus = InstallmentStatus.NOT_STARTED; // Before due date
+        // Get fresh entry data first to get updated amountRemaining and status from payment service
+        const freshEntry = await entryMockService.getById(id!);
+        if (freshEntry && freshEntry.installmentDetails) {
+          // Determine what the status should be after removing payment
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const termDueDate = new Date(freshEntry.installmentDetails.terms[termIdx].dueDate);
+          termDueDate.setHours(0, 0, 0, 0);
+          
+          let newStatus = InstallmentStatus.UNPAID;
+          if (today.getTime() === termDueDate.getTime()) {
+            newStatus = InstallmentStatus.UNPAID;
+          } else if (today > termDueDate) {
+            newStatus = InstallmentStatus.DELINQUENT;
+          } else if (today < termDueDate) {
+            const installmentStartDate = new Date(freshEntry.installmentDetails.startDate);
+            installmentStartDate.setHours(0, 0, 0);
+            if (today < installmentStartDate) {
+              newStatus = InstallmentStatus.NOT_STARTED;
+            } else {
+              newStatus = InstallmentStatus.NOT_STARTED; // Before due date
+            }
           }
+          
+          const updatedTerms = freshEntry.installmentDetails.terms.map((t, i) =>
+            i === termIdx
+              ? {
+                  ...t,
+                  paymentDate: undefined,
+                  status: newStatus,
+                }
+              : t
+          );
+          
+          const finalEntry = {
+            ...freshEntry,
+            installmentDetails: {
+              ...freshEntry.installmentDetails,
+              terms: updatedTerms,
+            },
+          };
+          
+          // Update the entry with the new term status while preserving amountRemaining
+          await entryMockService.update(id!, {
+            installmentDetails: finalEntry.installmentDetails,
+          });
+          
+          setEntry(finalEntry);
         }
-        
-        const updatedTerms = entry.installmentDetails.terms.map((t, i) =>
-          i === termIdx
-            ? {
-                ...t,
-                paymentDate: undefined,
-                status: newStatus,
-              }
-            : t
-        );
-        const entryWithRevertedTerm = {
-          ...entry,
-          installmentDetails: {
-            ...entry.installmentDetails,
-            terms: updatedTerms,
-          },
-        };
-        await entryMockService.update(id!, entryWithRevertedTerm);
-        setEntry(entryWithRevertedTerm);
       } else {
         // For non-installment payments, refresh entry to recalculate amountRemaining and status
         if (id) {
           const updatedEntry = await entryMockService.getById(id);
-          setEntry(updatedEntry ?? null);
+          
+          // For group expense, update payment allocation's amountPaid
+          if (updatedEntry && updatedEntry.transactionType === 'Group Expense' && updatedEntry.paymentAllocations && paymentToDelete?.payee) {
+            const updatedAllocations = updatedEntry.paymentAllocations.map(alloc => {
+              if (alloc.payee.personID === paymentToDelete.payee.personID) {
+                return {
+                  ...alloc,
+                  amountPaid: Math.max(0, (alloc.amountPaid || 0) - paymentToDelete.paymentAmount)
+                };
+              }
+              return alloc;
+            });
+            await entryMockService.update(id, { paymentAllocations: updatedAllocations });
+            // Refresh entry again to get updated allocations
+            const finalEntry = await entryMockService.getById(id);
+            setEntry(finalEntry ?? null);
+          } else {
+            setEntry(updatedEntry ?? null);
+          }
         }
       }
       
@@ -175,32 +256,65 @@ function EntryDetails() {
         // If payment is for a specific term, mark that term as paid
         if (payment.termNumber && entry?.installmentDetails) {
           const termIdx = payment.termNumber - 1; // Convert to 0-indexed
-          const updatedTerms = entry.installmentDetails.terms.map((t, i) =>
-            i === termIdx
-              ? {
-                  ...t,
-                  paymentDate: payment.paymentDate,
-                  status: InstallmentStatus.PAID,
-                }
-              : t
-          );
-          const entryWithPaidTerm = {
-            ...entry,
-            installmentDetails: {
-              ...entry.installmentDetails,
-              terms: updatedTerms,
-            },
-          };
-          await entryMockService.update(id, entryWithPaidTerm);
-          setEntry(entryWithPaidTerm);
+          
+          // Get fresh entry data first to get updated amountRemaining and status from payment service
+          const freshEntry = await entryMockService.getById(id);
+          if (freshEntry) {
+            // Update the term status in the fresh entry
+            const updatedTerms = freshEntry.installmentDetails?.terms.map((t, i) =>
+              i === termIdx
+                ? {
+                    ...t,
+                    paymentDate: payment.paymentDate,
+                    status: InstallmentStatus.PAID,
+                  }
+                : t
+            ) || [];
+            
+            const finalEntry = {
+              ...freshEntry,
+              installmentDetails: freshEntry.installmentDetails ? {
+                ...freshEntry.installmentDetails,
+                terms: updatedTerms,
+              } : undefined,
+            };
+            
+            // Update the entry with the new term status while preserving amountRemaining
+            await entryMockService.update(id, {
+              installmentDetails: finalEntry.installmentDetails,
+            });
+            
+            setEntry(finalEntry);
+          }
         } else {
-          // Refresh entry to get updated amountRemaining and status (for non-installment payments)
+          // Always refresh entry to get updated amountRemaining and status
           const updatedEntry = await entryMockService.getById(id);
           setEntry(updatedEntry ?? null);
+        }
+        
+        // For group expense, update payment allocation's amountPaid
+        if (entry?.transactionType === 'Group Expense' && entry.paymentAllocations && paymentFromAllocation) {
+          const currentEntry = entry;
+          if (currentEntry.paymentAllocations) {
+            const updatedAllocations = currentEntry.paymentAllocations.map(alloc => {
+              if (alloc.id === paymentFromAllocation.id) {
+                return {
+                  ...alloc,
+                  amountPaid: (alloc.amountPaid || 0) + payment.paymentAmount
+                };
+              }
+              return alloc;
+            });
+            await entryMockService.update(id, { paymentAllocations: updatedAllocations });
+            // Refresh entry again to get updated allocations
+            const finalEntry = await entryMockService.getById(id);
+            setEntry(finalEntry ?? null);
+          }
         }
       }
       setShowPaymentModal(false);
       setCurrentTermNumber(undefined); // Clear term number
+      setPaymentFromAllocation(null); // Clear allocation reference
       setTimeout(() => setModalSuccess(null), 1500);
     } catch (err) {
       setModalError('Failed to save payment');
@@ -210,46 +324,34 @@ function EntryDetails() {
   };
 
   // Payment Allocation handlers (simulate in-memory)
-  const handleAddAlloc = () => {
-    setEditingAlloc(null);
-    setShowAllocModal(true);
+  const handlePayFromAllocation = (alloc: PaymentAllocation) => {
+    // Store allocation details and open payment modal
+    setPaymentFromAllocation(alloc);
+    setEditingPayment(null);
+    setCurrentTermNumber(undefined);
+    setShowPaymentModal(true);
   };
+
   const handleEditAlloc = (alloc: PaymentAllocation) => {
     setEditingAlloc(alloc);
     setShowAllocModal(true);
   };
-  const handleDeleteAlloc = async (allocId: string) => {
-    if (!window.confirm('Are you sure you want to delete this allocation?')) return;
-    setAllocLoading(true);
-    setModalError(null);
-    try {
-      if (entry && entry.paymentAllocations) {
-        const updatedEntry = {
-          ...entry,
-          paymentAllocations: entry.paymentAllocations.filter((a: PaymentAllocation) => a.id !== allocId),
-        };
-        setEntry(updatedEntry ?? null);
-        setModalSuccess('Allocation deleted successfully!');
-        setTimeout(() => setModalSuccess(null), 1500);
-      }
-    } catch (err) {
-      setModalError('Failed to delete allocation');
-    } finally {
-      setAllocLoading(false);
-    }
-  };
+  
   const handleSaveAlloc: (
     allocation: Omit<PaymentAllocation, 'id' | 'createdAt' | 'updatedAt'>,
     id?: string
   ) => void = async (alloc, allocId) => {
     setModalError(null);
-    setAllocLoading(true);
     try {
       if (entry) {
         let updatedAllocations: PaymentAllocation[] = entry.paymentAllocations ? [...entry.paymentAllocations] : [];
         if (allocId) {
-          // Edit
-          updatedAllocations = updatedAllocations.map((a: PaymentAllocation) => a.id === allocId ? { ...a, ...alloc, id: allocId } : a);
+          // Edit - only update description and notes
+          updatedAllocations = updatedAllocations.map((a: PaymentAllocation) => 
+            a.id === allocId 
+              ? { ...a, description: alloc.description, notes: alloc.notes, updatedAt: new Date() } 
+              : a
+          );
           setModalSuccess('Allocation updated successfully!');
         } else {
           // Add
@@ -263,8 +365,6 @@ function EntryDetails() {
       }
     } catch (err) {
       setModalError('Failed to save allocation');
-    } finally {
-      setAllocLoading(false);
     }
   };
 
@@ -359,7 +459,11 @@ function EntryDetails() {
           </div>
           <div className="detail-item">
             <label>Lender:</label>
-            <span>{entry.lender}</span>
+            <span>
+              {typeof entry.lender === 'object' && 'firstName' in entry.lender
+                ? `${entry.lender.firstName} ${entry.lender.lastName}`
+                : entry.lender}
+            </span>
           </div>
           <div className="detail-item">
             <label>Amount Borrowed:</label>
@@ -375,10 +479,62 @@ function EntryDetails() {
               {typeof entry.status === 'string' ? entry.status : ''}
             </span>
           </div>
+          {entry.dateBorrowed && (
+            <div className="detail-item">
+              <label>Date Borrowed:</label>
+              <span>{new Date(entry.dateBorrowed).toLocaleDateString()}</span>
+            </div>
+          )}
+          {entry.dateFullyPaid && (
+            <div className="detail-item">
+              <label>Date Fully Paid:</label>
+              <span>{new Date(entry.dateFullyPaid).toLocaleDateString()}</span>
+            </div>
+          )}
+          {entry.transactionType === 'Installment Expense' && entry.installmentDetails && (
+            <>
+              <div className="detail-item">
+                <label>Payment Frequency:</label>
+                <span>{entry.installmentDetails.paymentFrequency}</span>
+              </div>
+              <div className="detail-item">
+                <label>Payment Terms:</label>
+                <span>{entry.installmentDetails.paymentTerms} terms</span>
+              </div>
+              <div className="detail-item">
+                <label>Amount Per Term:</label>
+                <span>₱{entry.installmentDetails.paymentAmountPerTerm.toLocaleString()}</span>
+              </div>
+            </>
+          )}
+          {entry.transactionType === 'Group Expense' && entry.paymentAllocations && (
+            <div className="detail-item">
+              <label>Group Members:</label>
+              <span>{entry.paymentAllocations.length} members</span>
+            </div>
+          )}
+          {entry.description && (
+            <div className="detail-item" style={{ gridColumn: '1 / -1' }}>
+              <label>Description:</label>
+              <span>{entry.description}</span>
+            </div>
+          )}
           {entry.notes && (
             <div className="detail-item" style={{ gridColumn: '1 / -1' }}>
               <label>Notes:</label>
               <span>{entry.notes}</span>
+            </div>
+          )}
+          {entry.proofOfLoan && (
+            <div className="detail-item" style={{ gridColumn: '1 / -1' }}>
+              <label>Proof of Loan:</label>
+              <div style={{ marginTop: '0.5em' }}>
+                <img 
+                  src={URL.createObjectURL(entry.proofOfLoan)} 
+                  alt="Proof of loan" 
+                  style={{ maxWidth: '400px', maxHeight: '400px', objectFit: 'contain', border: '1px solid #ddd', borderRadius: '4px' }} 
+                />
+              </div>
             </div>
           )}
         </div>
@@ -388,7 +544,9 @@ function EntryDetails() {
       <section className="details-section">
         <div className="section-header">
           <h2>Payment Details</h2>
-          {entry.transactionType !== 'Installment Expense' && (
+          {entry.transactionType !== 'Installment Expense' && 
+           entry.transactionType !== 'Group Expense' && 
+           entry.status !== 'PAID' && (
             <button className="btn-primary" onClick={handleAddPayment}>+ Add Payment</button>
           )}
         </div>
@@ -400,6 +558,7 @@ function EntryDetails() {
                 <th>Payee</th>
                 <th>Amount</th>
                 {entry.transactionType === 'Installment Expense' && <th>Term</th>}
+                <th>Proof</th>
                 <th>Notes</th>
                 <th>Actions</th>
               </tr>
@@ -413,6 +572,31 @@ function EntryDetails() {
                   {entry.transactionType === 'Installment Expense' && (
                     <td>{payment.termNumber ? `Term ${payment.termNumber}` : '-'}</td>
                   )}
+                  <td>
+                    {payment.proof ? (
+                      <img 
+                        src={URL.createObjectURL(payment.proof)} 
+                        alt="Payment proof" 
+                        style={{ 
+                          maxWidth: '80px', 
+                          maxHeight: '80px', 
+                          objectFit: 'cover', 
+                          border: '1px solid #ddd', 
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => {
+                          const imgWindow = window.open('');
+                          if (imgWindow) {
+                            imgWindow.document.write(`<img src="${URL.createObjectURL(payment.proof!)}" style="max-width:100%;height:auto;"/>`);
+                          }
+                        }}
+                        title="Click to view full size"
+                      />
+                    ) : (
+                      <span style={{ color: '#999', fontSize: '0.9em' }}>No proof</span>
+                    )}
+                  </td>
                   <td>{payment.notes}</td>
                   <td>
                     <button className="btn-secondary" onClick={() => handleEditPayment(payment)}>Edit</button>
@@ -428,7 +612,10 @@ function EntryDetails() {
         {showPaymentModal && (
           <CreatePaymentModal
             isOpen={showPaymentModal}
-            onClose={() => setShowPaymentModal(false)}
+            onClose={() => {
+              setShowPaymentModal(false);
+              setPaymentFromAllocation(null);
+            }}
             onSave={handleSavePayment}
             initialPayment={editingPayment}
             people={(() => {
@@ -454,6 +641,15 @@ function EntryDetails() {
             termNumber={currentTermNumber}
             suggestedAmount={currentTermNumber && entry.installmentDetails ? entry.installmentDetails.paymentAmountPerTerm : undefined}
             suggestedDate={currentTermNumber && entry.installmentDetails ? entry.installmentDetails.terms[currentTermNumber - 1]?.dueDate : undefined}
+            lockedPayee={paymentFromAllocation?.payee}
+            maxPaymentAmount={paymentFromAllocation ? (paymentFromAllocation.amount - (paymentFromAllocation.amountPaid || 0)) : undefined}
+            defaultPayee={(() => {
+              // For non-group expense, default to borrower
+              if (entry && typeof entry.borrower === 'object' && 'personID' in entry.borrower) {
+                return entry.borrower as Person;
+              }
+              return undefined;
+            })()}
           />
         )}
       </section>
@@ -518,6 +714,7 @@ function EntryDetails() {
                 <th>Term</th>
                 <th>Due Date</th>
                 <th>Status</th>
+                <th>Notes</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -579,6 +776,55 @@ function EntryDetails() {
                         {status}
                       </span>
                     </td>
+                    <td>
+                      {editingTermNotes[idx] ? (
+                        <div style={{ display: 'flex', gap: '0.5em', alignItems: 'center' }}>
+                          <textarea
+                            value={termNotesValues[idx] !== undefined ? termNotesValues[idx] : (term.notes || '')}
+                            onChange={(e) => setTermNotesValues({ ...termNotesValues, [idx]: e.target.value })}
+                            style={{ flex: 1, minHeight: '60px', padding: '0.5em', fontSize: '0.9em' }}
+                            placeholder="Add notes for this term..."
+                          />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3em' }}>
+                            <button 
+                              className="btn-primary" 
+                              style={{ padding: '0.3em 0.7em', fontSize: '0.85em' }}
+                              onClick={() => handleSaveTermNotes(idx)}
+                            >
+                              Save
+                            </button>
+                            <button 
+                              className="btn-secondary" 
+                              style={{ padding: '0.3em 0.7em', fontSize: '0.85em' }}
+                              onClick={() => {
+                                setEditingTermNotes({ ...editingTermNotes, [idx]: false });
+                                setTermNotesValues({ ...termNotesValues, [idx]: term.notes || '' });
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div 
+                          style={{ 
+                            cursor: 'pointer', 
+                            padding: '0.5em',
+                            minHeight: '40px',
+                            backgroundColor: term.notes ? 'transparent' : '#f9f9f9',
+                            borderRadius: '4px',
+                            color: term.notes ? 'inherit' : '#999'
+                          }}
+                          onClick={() => {
+                            setEditingTermNotes({ ...editingTermNotes, [idx]: true });
+                            setTermNotesValues({ ...termNotesValues, [idx]: term.notes || '' });
+                          }}
+                          title="Click to edit notes"
+                        >
+                          {term.notes || 'Click to add notes...'}
+                        </div>
+                      )}
+                    </td>
 
                     <td>
                       {status === InstallmentStatus.UNPAID && (
@@ -606,7 +852,6 @@ function EntryDetails() {
         <section className="details-section">
           <div className="section-header">
             <h2>Payment Allocation</h2>
-            <button className="btn-primary" onClick={handleAddAlloc} disabled={payments.length > 0}>+ Add Allocation</button>
           </div>
           {entry.paymentAllocations && entry.paymentAllocations.length > 0 ? (
             <table className="alloc-table">
@@ -617,6 +862,7 @@ function EntryDetails() {
                   <th>Amount Paid</th>
                   <th>Percent</th>
                   <th>Description</th>
+                  <th>Notes</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
@@ -635,10 +881,19 @@ function EntryDetails() {
                       <td>₱{paid.toLocaleString()}</td>
                       <td>{alloc.percentageOfTotal}%</td>
                       <td>{alloc.description}</td>
+                      <td>{alloc.notes || '-'}</td>
                       <td><span className={`status-badge status-${status.toLowerCase()}`}>{status}</span></td>
                       <td>
-                        <button className="btn-secondary" onClick={() => handleEditAlloc(alloc)} disabled={payments.length > 0}>Edit</button>
-                        <button className="btn-danger" onClick={() => handleDeleteAlloc(alloc.id)} disabled={allocLoading || payments.length > 0}>Delete</button>
+                        {status !== 'PAID' && (
+                          <button 
+                            className="btn-primary" 
+                            style={{ marginRight: '0.5em' }}
+                            onClick={() => handlePayFromAllocation(alloc)}
+                          >
+                            Pay
+                          </button>
+                        )}
+                        <button className="btn-secondary" onClick={() => handleEditAlloc(alloc)}>Edit</button>
                       </td>
                     </tr>
                   );

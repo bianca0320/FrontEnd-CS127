@@ -34,6 +34,7 @@ function generateInstallmentTerms(
       status: InstallmentStatus.NOT_STARTED,
       skipped: false,
       delinquent: false,
+      notes: '',
     });
   }
 

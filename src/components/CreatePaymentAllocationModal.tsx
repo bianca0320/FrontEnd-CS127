@@ -9,14 +9,16 @@ interface CreatePaymentAllocationModalProps {
   initialAllocation?: PaymentAllocation | null;
   people: Person[];
   entryId: string;
+  isEditMode?: boolean;
 }
 
-const CreatePaymentAllocationModal: React.FC<CreatePaymentAllocationModalProps> = ({ isOpen, onClose, onSave, initialAllocation, people, entryId }) => {
+const CreatePaymentAllocationModal: React.FC<CreatePaymentAllocationModalProps> = ({ isOpen, onClose, onSave, initialAllocation, people, entryId, isEditMode = false }) => {
   const [personId, setPersonId] = useState('');
   const [amount, setAmount] = useState('');
   const [amountPaid, setAmountPaid] = useState('');
   const [percent, setPercent] = useState('');
   const [description, setDescription] = useState('');
+  const [notes, setNotes] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
   React.useEffect(() => {
@@ -26,12 +28,14 @@ const CreatePaymentAllocationModal: React.FC<CreatePaymentAllocationModalProps> 
       setAmountPaid((initialAllocation.amountPaid || 0).toString());
       setPercent(initialAllocation.percentageOfTotal.toString());
       setDescription(initialAllocation.description || '');
+      setNotes(initialAllocation.notes || '');
     } else {
       setPersonId('');
       setAmount('');
       setAmountPaid('0');
       setPercent('');
       setDescription('');
+      setNotes('');
     }
     setFormError(null);
   }, [initialAllocation, isOpen]);
@@ -73,6 +77,7 @@ const CreatePaymentAllocationModal: React.FC<CreatePaymentAllocationModalProps> 
       amountPaid: parseFloat(amountPaid || '0'),
       percentageOfTotal: parseFloat(percent),
       description,
+      notes,
       status: 'UNPAID' as any,
     }, initialAllocation?.id);
   };
@@ -88,7 +93,7 @@ const CreatePaymentAllocationModal: React.FC<CreatePaymentAllocationModalProps> 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Person *</label>
-            <select value={personId} onChange={e => setPersonId(e.target.value)} required>
+            <select value={personId} onChange={e => setPersonId(e.target.value)} required disabled={!!initialAllocation}>
               <option value="">Select...</option>
               {people.map(p => (
                 <option key={p.personID} value={p.personID}>{p.firstName} {p.lastName}</option>
@@ -97,19 +102,26 @@ const CreatePaymentAllocationModal: React.FC<CreatePaymentAllocationModalProps> 
           </div>
           <div className="form-group">
             <label>Amount Due *</label>
-            <input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required />
+            <input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required disabled={!!initialAllocation} />
           </div>
           <div className="form-group">
             <label>Amount Paid</label>
-            <input type="number" min="0" step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} />
+            <input type="number" min="0" step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} disabled />
+            <small style={{ display: 'block', marginTop: '0.3em', color: '#666', fontStyle: 'italic' }}>
+              This is automatically updated when payments are made
+            </small>
           </div>
           <div className="form-group">
             <label>Percent *</label>
-            <input type="number" min="0" max="100" step="0.01" value={percent} onChange={e => setPercent(e.target.value)} required />
+            <input type="number" min="0" max="100" step="0.01" value={percent} onChange={e => setPercent(e.target.value)} required disabled={!!initialAllocation} />
           </div>
           <div className="form-group">
             <label>Description</label>
             <textarea value={description} onChange={e => setDescription(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>

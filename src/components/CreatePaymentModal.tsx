@@ -12,9 +12,12 @@ interface CreatePaymentModalProps {
   termNumber?: number; // For installment entries - which term this payment is for
   suggestedAmount?: number; // For installment entries - amount per term
   suggestedDate?: Date; // For installment entries - due date of the term
+  lockedPayee?: Person; // For group expense - locked payee from allocation
+  maxPaymentAmount?: number; // For group expense - max amount from allocation
+  defaultPayee?: Person; // For non-group expense - default to borrower
 }
 
-const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose, onSave, initialPayment, people, entryId, termNumber, suggestedAmount, suggestedDate }) => {
+const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose, onSave, initialPayment, people, entryId, termNumber, suggestedAmount, suggestedDate, lockedPayee, maxPaymentAmount, defaultPayee }) => {
   const [personId, setPersonId] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
@@ -39,7 +42,8 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose
       setNotes(initialPayment.notes || '');
       setProof(null);
     } else {
-      setPersonId('');
+      // Use locked payee if provided, otherwise use default payee
+      setPersonId(lockedPayee ? lockedPayee.personID.toString() : (defaultPayee ? defaultPayee.personID.toString() : ''));
       setPaymentAmount(suggestedAmount ? suggestedAmount.toString() : '');
       // Handle suggested date properly to avoid timezone offset
       if (suggestedDate) {
@@ -55,7 +59,7 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose
       setProof(null);
     }
     setFormError(null);
-  }, [initialPayment, isOpen, suggestedAmount, suggestedDate]);
+  }, [initialPayment, isOpen, suggestedAmount, suggestedDate, lockedPayee, defaultPayee]);
 
   if (!isOpen) return null;
 
@@ -84,8 +88,10 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose
       setFormError('Amount must be a positive number.');
       return;
     }
-    if (maxAmount !== null && Number(paymentAmount) > maxAmount) {
-      setFormError('Amount cannot exceed remaining balance (₱' + maxAmount.toLocaleString() + ")");
+    // Use maxPaymentAmount prop if provided (for group expense allocations)
+    const effectiveMaxAmount = maxPaymentAmount !== undefined ? maxPaymentAmount : maxAmount;
+    if (effectiveMaxAmount !== null && Number(paymentAmount) > effectiveMaxAmount) {
+      setFormError('Amount cannot exceed remaining balance (₱' + effectiveMaxAmount.toLocaleString() + ")");
       return;
     }
     const payee = people.find(p => p.personID.toString() === personId);
@@ -133,12 +139,17 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Payee *</label>
-            <select value={personId} onChange={e => setPersonId(e.target.value)} required>
+            <select value={personId} onChange={e => setPersonId(e.target.value)} required disabled={!!lockedPayee || !!initialPayment}>
               <option value="">Select...</option>
               {people.map(p => (
                 <option key={p.personID} value={p.personID}>{p.firstName} {p.lastName}</option>
               ))}
             </select>
+            {lockedPayee && (
+              <small style={{ display: 'block', marginTop: '0.5em', color: '#666', fontStyle: 'italic' }}>
+                Payee is locked for this allocation payment
+              </small>
+            )}
           </div>
           <div className="form-group">
             <label>Payment Date *</label>
@@ -146,7 +157,7 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose
               type="date"
               value={paymentDate}
               onChange={e => setPaymentDate(e.target.value)}
-              readOnly={!!termNumber && !!suggestedDate}
+              readOnly={!!termNumber && !!suggestedDate || !!initialPayment}
               required
             />
             {termNumber && suggestedDate && <small>Fixed date for Term {termNumber}</small>}
@@ -158,18 +169,25 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({ isOpen, onClose
               min="0"
               step="0.01"
               value={paymentAmount}
-              max={maxAmount !== null ? maxAmount : undefined}
+              max={maxPaymentAmount !== undefined ? maxPaymentAmount : (maxAmount !== null ? maxAmount : undefined)}
               readOnly={!!termNumber && !!suggestedAmount}
+              disabled={!!initialPayment}
               onChange={e => {
-                if (maxAmount !== null && Number(e.target.value) > maxAmount) {
-                  setPaymentAmount(maxAmount.toString());
+                const effectiveMaxAmount = maxPaymentAmount !== undefined ? maxPaymentAmount : maxAmount;
+                if (effectiveMaxAmount !== null && Number(e.target.value) > effectiveMaxAmount) {
+                  setPaymentAmount(effectiveMaxAmount.toString());
                 } else {
                   setPaymentAmount(e.target.value);
                 }
               }}
               required
             />
-            {maxAmount !== null && !termNumber && <small>Max: ₱{maxAmount.toLocaleString()}</small>}
+            {maxPaymentAmount !== undefined && (
+              <small style={{ display: 'block', marginTop: '0.3em', color: '#666' }}>
+                Maximum amount due: ₱{maxPaymentAmount.toLocaleString()}
+              </small>
+            )}
+            {maxAmount !== null && !termNumber && maxPaymentAmount === undefined && <small>Max: ₱{maxAmount.toLocaleString()}</small>}
             {termNumber && suggestedAmount && <small>Fixed amount for Term {termNumber}</small>}
           </div>
           <div className="form-group">

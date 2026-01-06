@@ -27,7 +27,7 @@ export function generateInitials(name: string): string {
  */
 export function generateReferenceId(
   borrower: { name: string; initials?: string } | string,
-  lender: string
+  lender: { firstName: string; lastName: string } | string
 ): string {
   let borrowerInitials: string
   
@@ -37,7 +37,12 @@ export function generateReferenceId(
     borrowerInitials = borrower.initials || generateInitials(borrower.name)
   }
   
-  const lenderInitials = generateInitials(lender)
+  let lenderInitials: string
+  if (typeof lender === 'string') {
+    lenderInitials = generateInitials(lender)
+  } else {
+    lenderInitials = generateInitials(`${lender.firstName} ${lender.lastName}`)
+  }
   
   return `${borrowerInitials}_${lenderInitials}`
 }

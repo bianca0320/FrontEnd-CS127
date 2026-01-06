@@ -19,14 +19,15 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
   const [entryName, setEntryName] = useState('');
   const [transactionType, setTransactionType] = useState<TransactionType>(TransactionType.STRAIGHT_EXPENSE);
   const [borrowerId, setBorrowerId] = useState('');
-  const [lender, setLender] = useState('');
+  const [lenderId, setLenderId] = useState('');
   const [amountBorrowed, setAmountBorrowed] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [dateBorrowed, setDateBorrowed] = useState('');
   const [dateFullyPaid, setDateFullyPaid] = useState('');
   const [notes, setNotes] = useState('');
-  // const [imageFiles, setImageFiles] = useState<File[]>([]); // unused
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
   // Installment fields
   const [startDate, setStartDate] = useState('');
   const [paymentFrequency, setPaymentFrequency] = useState<PaymentFrequency>(PaymentFrequency.MONTHLY);
@@ -48,12 +49,20 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
       } else {
         setBorrowerId('');
       }
-      setLender(initialEntry.lender);
+      setLenderId(initialEntry.lender.personID.toString());
       setAmountBorrowed(initialEntry.amountBorrowed.toString());
       setDescription(initialEntry.description || '');
       setDateBorrowed(initialEntry.dateBorrowed ? new Date(initialEntry.dateBorrowed).toISOString().slice(0, 10) : '');
       setDateFullyPaid(initialEntry.dateFullyPaid ? new Date(initialEntry.dateFullyPaid).toISOString().slice(0, 10) : '');
       setNotes(initialEntry.notes || '');
+      // Handle existing image
+      if (initialEntry.proofOfLoan) {
+        const url = URL.createObjectURL(initialEntry.proofOfLoan);
+        setExistingImageUrl(url);
+      } else {
+        setExistingImageUrl(null);
+      }
+      setImageFile(null);
       if (initialEntry.installmentDetails) {
         setStartDate(initialEntry.installmentDetails.startDate ? new Date(initialEntry.installmentDetails.startDate).toISOString().slice(0, 10) : '');
         setPaymentFrequency(initialEntry.installmentDetails.paymentFrequency);
@@ -67,7 +76,7 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
       setEntryName('');
       setTransactionType(TransactionType.STRAIGHT_EXPENSE);
       setBorrowerId('');
-      setLender('');
+      setLenderId('');
       setAmountBorrowed('');
       setDescription('');
       setDateBorrowed('');
@@ -78,9 +87,20 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
       setPaymentTerms('');
       setPaymentAmountPerTerm('');
       setPaymentAllocations([]);
+      setImageFile(null);
+      setExistingImageUrl(null);
     }
     setFormError(null);
   }, [initialEntry, isOpen]);
+
+  // Auto-clear lender if borrower is changed to match lender (for individual borrowers)
+  useEffect(() => {
+    if (transactionType !== TransactionType.GROUP_EXPENSE && borrowerId && lenderId && borrowerId === lenderId) {
+      setLenderId('');
+      setFormError('Borrower and lender cannot be the same person. Lender has been cleared.');
+      setTimeout(() => setFormError(null), 3000);
+    }
+  }, [borrowerId, lenderId, transactionType]);
 
   // Auto-calculate paymentAmountPerTerm when amountBorrowed or paymentTerms change (for installment)
   useEffect(() => {
@@ -135,15 +155,24 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
     if (transactionType === TransactionType.GROUP_EXPENSE && groupMembers.length && amountBorrowed && allocationMode) {
       const amt = parseFloat(amountBorrowed);
       if (allocationMode === 'equal') {
-        const per = +(100 / groupMembers.length).toFixed(2);
-        const each = +(amt / groupMembers.length).toFixed(2);
-        setPaymentAllocations(groupMembers.map((m: Person) => ({
-          payee: m,
-          amount: each,
-          percentageOfTotal: per,
-          description: '',
-          notes: '',
-        })));
+        // Calculate equal distribution - everyone gets the same amount rounded up
+        const memberCount = groupMembers.length;
+        const amountPerPerson = Math.ceil((amt / memberCount) * 100) / 100; // Round up to 2 decimals
+        
+        // Distribute amounts - everyone gets the same amount (base + remainder)
+        const allocations = groupMembers.map((m: Person) => {
+          const percent = +((amountPerPerson / amt) * 100).toFixed(2);
+          
+          return {
+            payee: m,
+            amount: amountPerPerson,
+            percentageOfTotal: percent,
+            description: '',
+            notes: '',
+          };
+        });
+        
+        setPaymentAllocations(allocations);
         setAllocationWarning(null);
       } else if (allocationMode === 'percent') {
         // Keep user input for percent, but auto compute amount
@@ -213,8 +242,13 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
       setFormError('Borrower is required.');
       return;
     }
-    if (!lender.trim()) {
+    if (!lenderId) {
       setFormError('Lender is required.');
+      return;
+    }
+    // Validate borrower cannot be lender (for person borrowers)
+    if (transactionType !== TransactionType.GROUP_EXPENSE && borrowerId === lenderId) {
+      setFormError('Borrower and lender cannot be the same person.');
       return;
     }
     if (!amountBorrowed.trim() || isNaN(Number(amountBorrowed)) || Number(amountBorrowed) <= 0) {
@@ -236,6 +270,20 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
       }
     }
     // Prepare entry object for saving
+    const lenderPerson = people.find(p => p.personID.toString() === lenderId);
+    if (!lenderPerson) {
+      setFormError('Selected lender not found.');
+      return;
+    }
+    
+    // Convert image file to Blob if present
+    let proofOfLoan: Blob | undefined = undefined;
+    if (imageFile) {
+      proofOfLoan = imageFile;
+    } else if (initialEntry?.proofOfLoan) {
+      proofOfLoan = initialEntry.proofOfLoan;
+    }
+    
     const backendEntry: any = {
       entryName,
       transactionType,
@@ -248,13 +296,14 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
           return person ? person : { personID: borrowerId };
         }
       })(),
-      lender,
+      lender: lenderPerson,
       amountBorrowed: parseFloat(amountBorrowed),
-      amountRemaining: parseFloat(amountBorrowed),
+      amountRemaining: initialEntry ? initialEntry.amountRemaining : parseFloat(amountBorrowed),
       description,
       dateBorrowed,
       dateFullyPaid,
       notes,
+      proofOfLoan,
       paymentAllocations: transactionType === TransactionType.GROUP_EXPENSE ? paymentAllocations : undefined,
       installmentDetails: transactionType === TransactionType.INSTALLMENT_EXPENSE ? {
         startDate,
@@ -302,27 +351,15 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
                   {groups && groups.length > 0 && groups.map(g => <option key={g.groupID} value={g.groupID}>{g.groupName}</option>)}
                 </select>
                 {borrowerId && (
-                  <div className="group-members-edit">
-                    <div className="group-members-list">
-                      <strong>Group Members:</strong>
-                      <ul>
-                        {groupMembers.length > 0 ? groupMembers.map((m: Person) => (
-                          <li key={m.personID} style={{display:'flex',alignItems:'center',gap:'0.5em'}}>
-                            {m.firstName} {m.lastName}
-                            <button type="button" className="btn-secondary" style={{marginLeft:'0.5em',padding:'0.2em 0.7em',fontSize:'0.9em'}} onClick={() => handleRemoveMemberFromGroup(m.personID.toString())} disabled={hasPayments}>Remove</button>
-                          </li>
-                        )) : <li style={{color:'#888'}}>No members in this group.</li>}
-                      </ul>
-                    </div>
-                    <div className="group-add-member">
-                      <label style={{marginTop:'0.7em'}}>Add Member:</label>
-                      <select onChange={e => { if(e.target.value) { handleAddMemberToGroup(e.target.value); e.target.value=''; }}} defaultValue="" disabled={hasPayments}>
-                        <option value="">Select person...</option>
-                        {people && people.length > 0 && people.filter(p => !groupMembers.some((m: Person) => m.personID === p.personID)).map(p => (
-                          <option key={p.personID} value={p.personID}>{p.firstName} {p.lastName}</option>
-                        ))}
-                      </select>
-                    </div>
+                  <div className="group-members-list" style={{ marginTop: '1em', padding: '1em', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
+                    <strong>Group Members:</strong>
+                    <ul style={{ marginTop: '0.5em', paddingLeft: '1.5em' }}>
+                      {groupMembers.length > 0 ? groupMembers.map((m: Person) => (
+                        <li key={m.personID} style={{ padding: '0.3em 0' }}>
+                          {m.firstName} {m.lastName}
+                        </li>
+                      )) : <li style={{color:'#888'}}>No members in this group.</li>}
+                    </ul>
                   </div>
                 )}
               </>
@@ -335,7 +372,22 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
           </div>
           <div className="form-group">
             <label>Lender *</label>
-            <input type="text" value={lender} onChange={e => setLender(e.target.value)} required />
+            <select value={lenderId} onChange={e => setLenderId(e.target.value)} required>
+              <option value="">Select person...</option>
+              {people && people.length > 0 && people
+                .filter(p => {
+                  // For individual borrowers, exclude the selected borrower from lender options
+                  if (transactionType !== TransactionType.GROUP_EXPENSE && borrowerId) {
+                    return p.personID.toString() !== borrowerId;
+                  }
+                  // For group expense, exclude all group members from lender options
+                  if (transactionType === TransactionType.GROUP_EXPENSE && groupMembers.length > 0) {
+                    return !groupMembers.some(m => m.personID.toString() === p.personID.toString());
+                  }
+                  return true;
+                })
+                .map(p => <option key={p.personID} value={p.personID}>{p.firstName} {p.lastName}</option>)}
+            </select>
           </div>
           <div className="form-group">
             <label>Amount Borrowed *</label>
@@ -347,7 +399,46 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
           </div>
           <div className="form-group">
             <label>Date Fully Paid</label>
-            <input type="date" value={dateFullyPaid} onChange={e => setDateFullyPaid(e.target.value)} disabled={isEditing} />
+            <input type="date" value={dateFullyPaid} onChange={e => setDateFullyPaid(e.target.value)} disabled />
+            <small style={{ display: 'block', marginTop: '0.3em', color: '#666', fontStyle: 'italic' }}>
+              This field is automatically set when all payments are completed
+            </small>
+          </div>
+          <div className="form-group">
+            <label>Proof of Loan (Optional)</label>
+            <input 
+              type="file" 
+              accept="image/*" 
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setImageFile(file);
+                  if (existingImageUrl) {
+                    URL.revokeObjectURL(existingImageUrl);
+                  }
+                  setExistingImageUrl(URL.createObjectURL(file));
+                }
+              }} 
+            />
+            {existingImageUrl && (
+              <div style={{ marginTop: '0.5em' }}>
+                <img src={existingImageUrl} alt="Proof of loan" style={{ maxWidth: '200px', maxHeight: '200px', objectFit: 'contain' }} />
+                <button 
+                  type="button" 
+                  className="btn-secondary" 
+                  style={{ marginLeft: '0.5em', padding: '0.2em 0.5em', fontSize: '0.9em' }}
+                  onClick={() => {
+                    setImageFile(null);
+                    if (existingImageUrl) {
+                      URL.revokeObjectURL(existingImageUrl);
+                    }
+                    setExistingImageUrl(null);
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            )}
           </div>
           <div className="form-group">
             <label>Notes</label>
@@ -407,14 +498,39 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
                           <td><input type="text" value={alloc.description} onChange={e => setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, description: e.target.value } : a))} disabled={hasPayments} /></td>
                           <td>
                             {allocationMode === 'amount' ? (
-                              <input type="number" min="0" step="0.01" value={alloc.amount} onChange={e => setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, amount: +e.target.value } : a))} disabled={hasPayments} />
+                              <input 
+                                type="number" 
+                                min="0" 
+                                step="0.01" 
+                                value={alloc.amount} 
+                                onChange={e => {
+                                  const newAmount = +e.target.value;
+                                  const totalAmount = parseFloat(amountBorrowed);
+                                  const newPercent = totalAmount > 0 ? +((newAmount / totalAmount) * 100).toFixed(2) : 0;
+                                  setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, amount: newAmount, percentageOfTotal: newPercent } : a));
+                                }} 
+                                disabled={hasPayments} 
+                              />
                             ) : (
                               alloc.amount
                             )}
                           </td>
                           <td>
                             {allocationMode === 'percent' ? (
-                              <input type="number" min="0" max="100" step="0.01" value={alloc.percentageOfTotal} onChange={e => setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, percentageOfTotal: +e.target.value } : a))} disabled={hasPayments} />
+                              <input 
+                                type="number" 
+                                min="0" 
+                                max="100" 
+                                step="0.01" 
+                                value={alloc.percentageOfTotal} 
+                                onChange={e => {
+                                  const newPercent = +e.target.value;
+                                  const totalAmount = parseFloat(amountBorrowed);
+                                  const newAmount = +(totalAmount * (newPercent / 100)).toFixed(2);
+                                  setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, percentageOfTotal: newPercent, amount: newAmount } : a));
+                                }} 
+                                disabled={hasPayments} 
+                              />
                             ) : (
                               alloc.percentageOfTotal
                             )}

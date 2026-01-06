@@ -6,6 +6,7 @@ export interface InstallmentTerm {
   paymentDate?: Date;
   skipped?: boolean;
   delinquent?: boolean;
+  notes?: string; // Editable notes for each term
 }
 // Enumerations
 export enum TransactionType {
@@ -100,13 +101,13 @@ export interface Entry {
   dateBorrowed?: Date; // Date (YYMMDD), Optional
   dateFullyPaid?: Date; // Date (YYMMDD), Optional
   borrower: Person | Group; // Alphanumeric - can be group
-  lender: string; // Alphanumeric
+  lender: Person; // Person who lent the money
   amountBorrowed: number; // Amount (Decimal)
   amountRemaining: number; // Amount (Decimal) - defaults to amountBorrowed
   status: PaymentStatus; // Alphanumeric - defaults to UNPAID
   notes?: string; // Alphanumeric, Optional
   paymentNotes?: string; // Alphanumeric, Optional
-  receiptOrProofOfLoan?: Blob; // BLOB - Photo/s showing the loan
+  proofOfLoan?: Blob; // BLOB - Photo/s showing the payment (e.g. EWallet screenshot), editable anytime, optional
   referenceId: string; // Auto Generated Alphanumeric
   payments?: Payment[]; // List of payments made
   installmentDetails?: InstallmentDetails; // Only if transactionType is INSTALLMENT_EXPENSE

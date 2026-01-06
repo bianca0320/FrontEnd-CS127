@@ -125,21 +125,29 @@ function PeopleAndGroups() {
     setShowCreatePersonModal(true);
   };
   const handleDeletePerson = async (id: string) => {
-    // Check for unpaid loans
-    const entries = await entryMockService.getAll();
-    const hasUnpaidLoan = entries.some(entry => {
-      if (typeof entry.borrower === 'object' && 'personID' in entry.borrower && entry.borrower.personID.toString() === id) {
-        return entry.amountRemaining > 0; // Assuming amountRemaining indicates unpaid
+    if (!window.confirm('Are you sure you want to delete this person?')) return;
+    
+    try {
+      // Check for unpaid loans where person is borrower
+      const entries = await entryMockService.getAll();
+      const hasUnpaidLoan = entries.some(entry => {
+        if (typeof entry.borrower === 'object' && 'personID' in entry.borrower && entry.borrower.personID.toString() === id) {
+          return entry.amountRemaining > 0;
+        }
+        return false;
+      });
+      
+      if (hasUnpaidLoan) {
+        alert('Cannot delete this person because they have unpaid loans.');
+        return;
       }
-      return false;
-    });
-    if (hasUnpaidLoan) {
-      alert('Cannot delete this person because they have unpaid loans.');
-      return;
-    }
-    if (window.confirm('Are you sure you want to delete this person?')) {
+      
       await personMockService.delete(id);
       setPeople(await personMockService.getAll());
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete person';
+      alert(errorMessage);
+      console.error('Failed to delete person:', err);
     }
   };
   const handleSavePerson = async (data: Omit<Person, 'personID'>, id?: number) => {

@@ -50,6 +50,39 @@ function AllPaymentsRecord() {
     setGroups(await groupMockService.getAll());
   };
 
+  const handleDeleteAllPaidRecords = async () => {
+    const paidEntries = entries.filter(e => e.status === 'PAID');
+    
+    if (paidEntries.length === 0) {
+      alert('No paid records found to delete.');
+      return;
+    }
+
+    const confirmMessage = `Are you sure you want to delete all ${paidEntries.length} paid record${paidEntries.length > 1 ? 's' : ''}?\n\nThis action cannot be undone.\n\nPaid entries to be deleted:\n${paidEntries.slice(0, 5).map(e => `- ${e.entryName}`).join('\n')}${paidEntries.length > 5 ? `\n... and ${paidEntries.length - 5} more` : ''}`;
+    
+    if (!window.confirm(confirmMessage)) return;
+
+    setModalLoading(true);
+    setModalError(null);
+
+    try {
+      // Delete all paid entries
+      for (const entry of paidEntries) {
+        await entryMockService.delete(entry.id);
+      }
+      
+      // Refresh entries list
+      const updatedEntries = await entryMockService.getAll();
+      setEntries(updatedEntries);
+      
+      alert(`Successfully deleted ${paidEntries.length} paid record${paidEntries.length > 1 ? 's' : ''}.`);
+    } catch (err: any) {
+      setModalError(err?.message || 'Failed to delete paid records');
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
   // Filter, search, and sort logic
   const filteredEntries = useMemo(() => {
     let filtered = entries;
@@ -59,7 +92,7 @@ function AllPaymentsRecord() {
         e.entryName.toLowerCase().includes(s) ||
         (typeof e.borrower === 'object' && 'firstName' in e.borrower && `${e.borrower.firstName} ${e.borrower.lastName}`.toLowerCase().includes(s)) ||
         (typeof e.borrower === 'object' && 'groupName' in e.borrower && e.borrower.groupName.toLowerCase().includes(s)) ||
-        (e.lender && e.lender.toLowerCase().includes(s))
+        (typeof e.lender === 'object' && 'firstName' in e.lender && `${e.lender.firstName} ${e.lender.lastName}`.toLowerCase().includes(s))
       );
     }
     if (statusFilter) {
@@ -122,9 +155,24 @@ function AllPaymentsRecord() {
           <h1>All Payments Record</h1>
           <p className="subtitle">Track, search, and manage all your payment entries in one place.</p>
         </div>
-        <button className="btn-primary pro-create-btn" onClick={() => setShowCreateModal(true)}>
-          <span className="plus-icon">＋</span> New Entry
-        </button>
+        <div style={{ display: 'flex', gap: '1em' }}>
+          <button 
+            className="btn-danger" 
+            style={{ 
+              backgroundColor: '#dc3545',
+              color: 'white',
+              padding: '0.7em 1.5em',
+              fontSize: '0.95em'
+            }}
+            onClick={handleDeleteAllPaidRecords}
+            disabled={modalLoading || entries.filter(e => e.status === 'PAID').length === 0}
+          >
+            <span style={{ marginRight: '0.5em' }}>🗑️</span> Clear Paid Records
+          </button>
+          <button className="btn-primary pro-create-btn" onClick={() => setShowCreateModal(true)}>
+            <span className="plus-icon">＋</span> New Entry
+          </button>
+        </div>
       </div>
 
       <div className="filters-bar pro-filters">
