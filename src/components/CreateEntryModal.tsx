@@ -12,9 +12,10 @@ interface CreateEntryModalProps {
   groups: Group[];
   onGroupsUpdated?: () => Promise<void> | void;
   formRef?: React.RefObject<HTMLFormElement>;
+  hasPayments?: boolean;
 }
 
-const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, onSave, initialEntry, people, groups, onGroupsUpdated, formRef }) => {
+const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, onSave, initialEntry, people, groups, onGroupsUpdated, formRef, hasPayments = false }) => {
   const [entryName, setEntryName] = useState('');
   const [transactionType, setTransactionType] = useState<TransactionType>(TransactionType.STRAIGHT_EXPENSE);
   const [borrowerId, setBorrowerId] = useState('');
@@ -80,6 +81,19 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
     }
     setFormError(null);
   }, [initialEntry, isOpen]);
+
+  // Auto-calculate paymentAmountPerTerm when amountBorrowed or paymentTerms change (for installment)
+  useEffect(() => {
+    if (transactionType === TransactionType.INSTALLMENT_EXPENSE && amountBorrowed && paymentTerms) {
+      const amt = parseFloat(amountBorrowed);
+      const terms = parseInt(paymentTerms);
+      if (amt > 0 && terms > 0) {
+        setPaymentAmountPerTerm((amt / terms).toFixed(2));
+      } else {
+        setPaymentAmountPerTerm('');
+      }
+    }
+  }, [amountBorrowed, paymentTerms, transactionType]);
 
   // Helper: get group members for selected group (with live state)
   const [groupMembers, setGroupMembers] = useState<Person[]>([]);
@@ -187,8 +201,6 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
 
   if (!isOpen) return null;
 
-
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -254,6 +266,8 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
     onSave(backendEntry, initialEntry?.id);
   };
 
+  const isEditing = !!initialEntry;
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -273,7 +287,7 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
           </div>
           <div className="form-group">
             <label>Transaction Type *</label>
-            <select value={transactionType} onChange={e => setTransactionType(e.target.value as TransactionType)}>
+            <select value={transactionType} onChange={e => setTransactionType(e.target.value as TransactionType)} disabled={isEditing}>
               <option value={TransactionType.STRAIGHT_EXPENSE}>Straight Expense</option>
               <option value={TransactionType.INSTALLMENT_EXPENSE}>Installment Expense</option>
               <option value={TransactionType.GROUP_EXPENSE}>Group Expense</option>
@@ -283,7 +297,7 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
             <label>{transactionType === TransactionType.GROUP_EXPENSE ? 'Group Borrower *' : 'Borrower *'}</label>
             {transactionType === TransactionType.GROUP_EXPENSE ? (
               <>
-                <select value={borrowerId} onChange={e => setBorrowerId(e.target.value)} required>
+                <select value={borrowerId} onChange={e => setBorrowerId(e.target.value)} required disabled={hasPayments}>
                   <option value="">Select group...</option>
                   {groups && groups.length > 0 && groups.map(g => <option key={g.groupID} value={g.groupID}>{g.groupName}</option>)}
                 </select>
@@ -295,14 +309,14 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
                         {groupMembers.length > 0 ? groupMembers.map((m: Person) => (
                           <li key={m.personID} style={{display:'flex',alignItems:'center',gap:'0.5em'}}>
                             {m.firstName} {m.lastName}
-                            <button type="button" className="btn-secondary" style={{marginLeft:'0.5em',padding:'0.2em 0.7em',fontSize:'0.9em'}} onClick={() => handleRemoveMemberFromGroup(m.personID.toString())}>Remove</button>
+                            <button type="button" className="btn-secondary" style={{marginLeft:'0.5em',padding:'0.2em 0.7em',fontSize:'0.9em'}} onClick={() => handleRemoveMemberFromGroup(m.personID.toString())} disabled={hasPayments}>Remove</button>
                           </li>
                         )) : <li style={{color:'#888'}}>No members in this group.</li>}
                       </ul>
                     </div>
                     <div className="group-add-member">
                       <label style={{marginTop:'0.7em'}}>Add Member:</label>
-                      <select onChange={e => { if(e.target.value) { handleAddMemberToGroup(e.target.value); e.target.value=''; }}} defaultValue="">
+                      <select onChange={e => { if(e.target.value) { handleAddMemberToGroup(e.target.value); e.target.value=''; }}} defaultValue="" disabled={hasPayments}>
                         <option value="">Select person...</option>
                         {people && people.length > 0 && people.filter(p => !groupMembers.some((m: Person) => m.personID === p.personID)).map(p => (
                           <option key={p.personID} value={p.personID}>{p.firstName} {p.lastName}</option>
@@ -313,7 +327,7 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
                 )}
               </>
             ) : (
-              <select value={borrowerId} onChange={e => setBorrowerId(e.target.value)} required>
+              <select value={borrowerId} onChange={e => setBorrowerId(e.target.value)} required disabled={hasPayments}>
                 <option value="">Select person...</option>
                 {people && people.length > 0 && people.map(p => <option key={p.personID} value={p.personID}>{p.firstName} {p.lastName}</option>)}
               </select>
@@ -325,7 +339,7 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
           </div>
           <div className="form-group">
             <label>Amount Borrowed *</label>
-            <input type="number" min="0" step="0.01" value={amountBorrowed} onChange={e => setAmountBorrowed(e.target.value)} required />
+            <input type="number" min="0" step="0.01" value={amountBorrowed} onChange={e => setAmountBorrowed(e.target.value)} required disabled={hasPayments} />
           </div>
           <div className="form-group">
             <label>Date Borrowed</label>
@@ -333,7 +347,7 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
           </div>
           <div className="form-group">
             <label>Date Fully Paid</label>
-            <input type="date" value={dateFullyPaid} onChange={e => setDateFullyPaid(e.target.value)} />
+            <input type="date" value={dateFullyPaid} onChange={e => setDateFullyPaid(e.target.value)} disabled={isEditing} />
           </div>
           <div className="form-group">
             <label>Notes</label>
@@ -344,22 +358,22 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
             <>
               <div className="form-group">
                 <label>Installment Start Date</label>
-                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} disabled={hasPayments} />
               </div>
               <div className="form-group">
                 <label>Payment Frequency</label>
-                <select value={paymentFrequency} onChange={e => setPaymentFrequency(e.target.value as PaymentFrequency)}>
+                <select value={paymentFrequency} onChange={e => setPaymentFrequency(e.target.value as PaymentFrequency)} disabled={hasPayments}>
                   <option value={PaymentFrequency.MONTHLY}>Monthly</option>
                   <option value={PaymentFrequency.WEEKLY}>Weekly</option>
                 </select>
               </div>
               <div className="form-group">
                 <label>Payment Terms</label>
-                <input type="number" min="1" value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} />
+                <input type="number" min="1" value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} disabled={hasPayments} />
               </div>
               <div className="form-group">
                 <label>Payment Amount Per Term</label>
-                <input type="number" min="0" step="0.01" value={paymentAmountPerTerm} onChange={e => setPaymentAmountPerTerm(e.target.value)} />
+                <input type="number" min="0" step="0.01" value={paymentAmountPerTerm} onChange={e => setPaymentAmountPerTerm(e.target.value)} disabled={isEditing} />
               </div>
             </>
           )}
@@ -368,9 +382,9 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
               <div className="form-group">
                 <label>Payment Allocation Mode *</label>
                 <div className="allocation-modes">
-                  <label><input type="radio" name="allocMode" value="equal" checked={allocationMode === 'equal'} onChange={() => setAllocationMode('equal')} /> Divide Equally</label>
-                  <label><input type="radio" name="allocMode" value="percent" checked={allocationMode === 'percent'} onChange={() => setAllocationMode('percent')} /> Divide by Percent</label>
-                  <label><input type="radio" name="allocMode" value="amount" checked={allocationMode === 'amount'} onChange={() => setAllocationMode('amount')} /> Divide by Amount</label>
+                  <label><input type="radio" name="allocMode" value="equal" checked={allocationMode === 'equal'} onChange={() => setAllocationMode('equal')} disabled={hasPayments} /> Divide Equally</label>
+                  <label><input type="radio" name="allocMode" value="percent" checked={allocationMode === 'percent'} onChange={() => setAllocationMode('percent')} disabled={hasPayments} /> Divide by Percent</label>
+                  <label><input type="radio" name="allocMode" value="amount" checked={allocationMode === 'amount'} onChange={() => setAllocationMode('amount')} disabled={hasPayments} /> Divide by Amount</label>
                 </div>
               </div>
               {allocationMode && (
@@ -390,22 +404,22 @@ const CreateEntryModal: React.FC<CreateEntryModalProps> = ({ isOpen, onClose, on
                       {paymentAllocations.map((alloc, i) => (
                         <tr key={alloc.payee.personID}>
                           <td>{alloc.payee.firstName} {alloc.payee.lastName}</td>
-                          <td><input type="text" value={alloc.description} onChange={e => setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, description: e.target.value } : a))} /></td>
+                          <td><input type="text" value={alloc.description} onChange={e => setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, description: e.target.value } : a))} disabled={hasPayments} /></td>
                           <td>
                             {allocationMode === 'amount' ? (
-                              <input type="number" min="0" step="0.01" value={alloc.amount} onChange={e => setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, amount: +e.target.value } : a))} />
+                              <input type="number" min="0" step="0.01" value={alloc.amount} onChange={e => setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, amount: +e.target.value } : a))} disabled={hasPayments} />
                             ) : (
                               alloc.amount
                             )}
                           </td>
                           <td>
                             {allocationMode === 'percent' ? (
-                              <input type="number" min="0" max="100" step="0.01" value={alloc.percentageOfTotal} onChange={e => setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, percentageOfTotal: +e.target.value } : a))} />
+                              <input type="number" min="0" max="100" step="0.01" value={alloc.percentageOfTotal} onChange={e => setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, percentageOfTotal: +e.target.value } : a))} disabled={hasPayments} />
                             ) : (
                               alloc.percentageOfTotal
                             )}
                           </td>
-                          <td><input type="text" value={alloc.notes} onChange={e => setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, notes: e.target.value } : a))} /></td>
+                          <td><input type="text" value={alloc.notes} onChange={e => setPaymentAllocations(p => p.map((a, j) => j === i ? { ...a, notes: e.target.value } : a))} disabled={hasPayments} /></td>
                         </tr>
                       ))}
                     </tbody>
